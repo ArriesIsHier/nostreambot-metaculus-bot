@@ -67,6 +67,8 @@ from scripts.telemetry.jsonl import load_jsonl_records
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_REPO = "No-Stream/nostreambot-metaculus-bot"
+
 # Artifacts whose name starts with this prefix are bot research uploads. Every bot
 # workflow uploads `research-<run_id>` (the test pair joined the prod three on 2026-08-03),
 # so this single prefix captures all of them via the (workflow-agnostic) artifacts API.
@@ -455,7 +457,7 @@ def main():
             "rarely needed — use it only to scope a targeted re-pull."
         ),
     )
-    parser.add_argument("--repo", default="No-Stream/metaculus-bot", help="GitHub repo")
+    parser.add_argument("--repo", default=DEFAULT_REPO, help="GitHub repo")
     parser.add_argument(
         "--backfill-dir",
         default=DEFAULT_BACKFILL_DIR,

@@ -71,6 +71,8 @@ from scripts.gha_artifacts import (
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_REPO = "No-Stream/nostreambot-metaculus-bot"
+
 # How many examples each capped list names before collapsing the rest into a count. The
 # summary counts are always exact; these lists exist to name a few instances.
 _SAMPLE_PRINT_LIMIT = 20
@@ -334,7 +336,7 @@ def print_report(findings: CompletenessFindings, store_dir: Path) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Verify the research archive captures every live GHA artifact.")
-    parser.add_argument("--repo", default="No-Stream/metaculus-bot", help="GitHub repo")
+    parser.add_argument("--repo", default=DEFAULT_REPO, help="GitHub repo")
     parser.add_argument(
         "--output-dir",
         default="backtests/research_archive",

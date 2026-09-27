@@ -38,7 +38,7 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-REPO = "No-Stream/metaculus-bot"
+REPO = "No-Stream/nostreambot-metaculus-bot"
 WORKFLOWS_DIR = Path(__file__).resolve().parents[1] / ".github" / "workflows"
 BOT_WORKFLOW_GLOB = "run_bot_on_*.yaml"
 RUN_LIST_FIELDS = "workflowName,event,status,conclusion,createdAt"

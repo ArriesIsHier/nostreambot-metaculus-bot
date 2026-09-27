@@ -46,6 +46,7 @@ def _mock_transport(
     status: int | None = None,
     body: str = "",
     exc: BaseException | None = None,
+    attempt_exceptions: tuple[BaseException | None, ...] | None = None,
 ) -> Iterator[dict]:
     """Stub the HTTP transport so the preflight runs against a fake response.
 
@@ -54,14 +55,20 @@ def _mock_transport(
     would go on the wire (headers included). Yields a dict populated with the
     prepared request, the send kwargs, and the send count.
     """
-    captured: dict = {"send_count": 0}
+    captured: dict = {"send_count": 0, "requests": [], "kwargs_by_send": []}
 
     def fake_send(self: HTTPAdapter, request: requests.PreparedRequest, **kwargs: object) -> requests.Response:
         captured["request"] = request
         captured["kwargs"] = kwargs
         captured["send_count"] += 1
-        if exc is not None:
-            raise exc
+        captured["requests"].append(request)
+        captured["kwargs_by_send"].append(kwargs)
+        attempt_index = captured["send_count"] - 1
+        attempt_exc = (
+            attempt_exceptions[attempt_index] if attempt_exceptions and attempt_index < len(attempt_exceptions) else exc
+        )
+        if attempt_exc is not None:
+            raise attempt_exc
         assert status is not None  # a non-exception transport stub must supply a status
         return text_response(body, status=status, url=request.url or api_preflight.preflight_url(), request=request)
 
@@ -135,9 +142,10 @@ class TestRaisesOnImposterHost:
 
     def test_timeout_raises_chained(self) -> None:
         original = requests.Timeout("slow")
-        with _mock_transport(exc=original), pytest.raises(ApiIdentityError) as excinfo:
+        with _mock_transport(exc=original) as captured, pytest.raises(ApiIdentityError) as excinfo:
             verify_metaculus_api_identity()
         assert excinfo.value.__cause__ is original
+        assert captured["send_count"] == 1
 
 
 class TestTransientEdgeStatuses:
@@ -155,6 +163,54 @@ class TestTransientEdgeStatuses:
         assert "parking" not in message
         assert "dig " not in message
         assert "do NOT retry with credentials" in message
+
+
+class TestReadTimeoutRetry:
+    """A read timeout gets one short unauthenticated retry before the gate fails shut."""
+
+    def test_read_timeout_retries_once_with_short_timeout_and_no_credentials(self) -> None:
+        with _mock_transport(
+            status=200,
+            body=_MANTIC_POSTS_BODY,
+            attempt_exceptions=(requests.ReadTimeout("response stalled"), None),
+        ) as captured:
+            verify_api_identity(MANTIC_API_BASE_URL)
+
+        assert captured["send_count"] == 2
+        assert [kwargs["timeout"] for kwargs in captured["kwargs_by_send"]] == [20.0, 2.0]
+        assert all("Authorization" not in request.headers for request in captured["requests"])
+
+    def test_second_read_timeout_fails_with_read_timeout_diagnostic(self) -> None:
+        first_timeout = requests.ReadTimeout("first response stalled")
+        second_timeout = requests.ReadTimeout("retry response stalled")
+        with (
+            _mock_transport(attempt_exceptions=(first_timeout, second_timeout)) as captured,
+            pytest.raises(ApiIdentityError, match="timed out waiting for a response") as excinfo,
+        ):
+            verify_api_identity(MANTIC_API_BASE_URL)
+
+        assert captured["send_count"] == 2
+        assert excinfo.value.__cause__ is second_timeout
+        assert "DNS/TLS/connect failure before any response" not in str(excinfo.value)
+
+    def test_read_timeout_retry_respects_smaller_caller_timeout(self) -> None:
+        with _mock_transport(
+            status=403,
+            body="Permission Error",
+            attempt_exceptions=(requests.ReadTimeout("response stalled"), None),
+        ) as captured:
+            verify_api_identity(MANTIC_API_BASE_URL, timeout=0.5)
+
+        assert [kwargs["timeout"] for kwargs in captured["kwargs_by_send"]] == [0.5, 0.5]
+
+    def test_wrong_identity_response_does_not_retry(self) -> None:
+        with (
+            _mock_transport(status=404, body="") as captured,
+            pytest.raises(ApiIdentityError),
+        ):
+            verify_api_identity(MANTIC_API_BASE_URL)
+
+        assert captured["send_count"] == 1
 
 
 class TestNeverSendsCredentials:

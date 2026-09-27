@@ -936,12 +936,12 @@ above as "would fire hourly if enabled". The practical consequence is that a
 the EXPECTED state, not a forfeit and not a `METACULUS_TOKEN` problem. It is the
 only disabled bot workflow: `run_bot_on_metaculus_cup.yaml` sat in the same state
 until the operator enabled it for the fall 2026 season and now reads `active`
-(the season-start checklist above has the history), and `run_bot_on_mantic.yaml`
-will be enabled the moment it merges to `main` (see "Mantic" below). To check the live state
+(the season-start checklist above has the history), and `run_bot_on_mantic.yaml` is
+active on `main` (see "Mantic" below). To check the live state
 rather than the YAML:
 
 ```bash
-gh workflow list --repo No-Stream/metaculus-bot --all
+gh workflow list --repo No-Stream/nostreambot-metaculus-bot --all
 ```
 
 `--repo` is required: `origin` is the fork, `upstream` is the Metaculus template,
@@ -997,14 +997,14 @@ the same mode would forecast the full `EXAMPLE_QUESTIONS` set, which is what
 Firing it, from the Actions UI or the CLI:
 
 ```bash
-gh workflow run test_bot_basic.yaml --repo No-Stream/metaculus-bot --ref <branch>
+gh workflow run test_bot_basic.yaml --repo No-Stream/nostreambot-metaculus-bot --ref <branch>
 ```
 
 The workflow has no inputs, so the only choice is which ref to run. Two things
 about the plumbing are easy to get wrong.
 
 First, pass `--repo`. This checkout has two remotes (`origin` is the operator's
-fork `No-Stream/metaculus-bot`, `upstream` is the Metaculus template it was
+fork `No-Stream/nostreambot-metaculus-bot`, `upstream` is the Metaculus template it was
 forked from) and no `gh` default repo is configured, so a bare
 `gh workflow run` or `gh workflow list` resolves against the *upstream* template
 and reports a workflow list that does not include this one.
@@ -1013,7 +1013,7 @@ Second, and the yaml header calls this out: a `workflow_dispatch` workflow only
 appears in the Actions "Run workflow" UI once its file exists on the **default**
 branch. A brand-new dispatch-only workflow on a feature branch is invisible
 until it merges to `main`. That is already satisfied here: the file is on
-`origin/main` and `gh workflow list --repo No-Stream/metaculus-bot` shows "Test
+`origin/main` and `gh workflow list --repo No-Stream/nostreambot-metaculus-bot` shows "Test
 Bot Basic (1 numeric Q smoke)" as active, so the `--ref` argument can point at
 any branch you want to test.
 
@@ -1429,10 +1429,11 @@ schedule dropping, and it went live on 2026-09-09: three cron-job.org jobs call 
 workflow-dispatch REST endpoint twice an hour, one job per bot workflow. Job 8417341
 dispatches `run_bot_on_tournament.yaml` at :02 and :32 UTC, job 8417342 dispatches
 `run_bot_on_metaculus_cup.yaml` at :12 and :42, and job 8417343 dispatches
-`run_bot_on_mantic.yaml` at :01 and :16. The Mantic job was created disabled, because
-GitHub answers 404 to a dispatch for a workflow file that `main` does not have, and
-`make cronjob_dispatch_setup ARGS="--apply --enable-mantic"` turns it on once the Mantic
-branch has merged. The first firing of each hour sits just ahead of the workflow's first
+`run_bot_on_mantic.yaml` at :01 and :16. The Mantic job was initially created disabled
+because GitHub answers 404 to a dispatch for a workflow file that `main` does not have.
+The workflow is now on `main`, so the desired job spec enables it by default; the plain
+`make cronjob_dispatch_setup ARGS="--apply"` reconciles all three jobs. This remains a
+paid, ask-first operation. The first firing of each hour sits just ahead of the workflow's first
 cron entry (:02 before :03, :12 before :13, :01 before :05), so when GitHub does deliver
 that cron the dispatched run already holds the workflow's concurrency group and the cron
 run queues behind it, finds nothing new and spends nothing. The six minutes are distinct
@@ -1578,13 +1579,12 @@ at `_assert_personal_keys_only` before any spend.
 Operator steps, in order:
 
 1. Done 2026-09-08: the token is stored as the `MANTIC_TOKEN` repository secret
-   (`gh secret list --repo No-Stream/metaculus-bot` shows it, set 2026-09-08 20:32 UTC).
+   (`gh secret list --repo No-Stream/nostreambot-metaculus-bot` shows it, set 2026-09-08 20:32 UTC).
 2. Done 2026-09-09: the per-bin smoke on post 651 ran once, passed the five checks above and
    was verified on the API ($2.28; the paragraph above has the readings).
-3. Merge `mantic-competition` to `main`. The schedule is live from that moment; there is
-   nothing to enable in the Actions UI. Then enable the Mantic dispatcher job with
-   `make cronjob_dispatch_setup ARGS="--apply --enable-mantic"` (paid, ask-first; see
-   "Scheduling reliability" above).
+3. The Mantic workflow is on `main`. The desired dispatcher spec includes Mantic as
+   enabled, so `make cronjob_dispatch_setup` shows it in the dry-run plan. Applying the
+   plan with `ARGS="--apply"` is paid and ask-first; see "Scheduling reliability" above.
 4. Done 2026-09-24: `MANTIC_TOURNAMENT_ID` and `MANTIC_TOURNAMENT_END_DATE` re-pointed to
    Series 2 (`series-2`, closing 2026-12-16). For the next season, the "Series 2 discovery"
    and "Stale slug goes red" checks above are what flag the hand-over.
@@ -1660,8 +1660,8 @@ The paid run is the operator's last step.
   smoke-test subsection there for the one-question variant.
 - `make cronjob_dispatch_setup ARGS="--apply"`: creates or changes the live cron-job.org
   jobs that dispatch the bot workflows, so every firing it adds is a paid, publishing bot
-  run; `--enable-mantic` turns the Mantic job on and waits for `run_bot_on_mantic.yaml` to
-  be on `main`. See "Scheduling reliability" above.
+  run. The desired spec includes the Mantic job as enabled because its workflow is on
+  `main`. See "Scheduling reliability" above.
 - `make probe_resolver QUESTION=<id>`: replays the gaps the archive recorded for one
   question through the production gap-fill v1 resolver path at every model and
   search-context cell of a grid (default: the current resolver model and `gpt-6-luna`,

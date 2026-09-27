@@ -11,9 +11,11 @@ token to an unknown host before dying on an opaque 404. The real Metaculus
 origin was still alive behind Cloudflare — this was an upstream domain incident,
 not a code bug.
 
-``verify_api_identity`` makes ONE unauthenticated request (no token, no headers)
+``verify_api_identity`` makes an unauthenticated request (no token, no headers)
 to the posts list under the given API base URL and confirms the host behaves
-like the real API before any authenticated call runs. ``verify_metaculus_api_identity``
+like the real API before any authenticated call runs. A read timeout gets one
+additional attempt capped at two seconds; identity responses and other failures
+are never retried. ``verify_metaculus_api_identity``
 is the Metaculus run modes' wrapper over it; the Mantic run mode calls
 ``verify_api_identity`` with ``MANTIC_API_BASE_URL`` directly, so a Mantic run
 never depends on Metaculus DNS health. Two jobs:
@@ -36,9 +38,13 @@ one call; that is an accepted trade — GHA runners have direct egress, and the
 no-credentials-to-an-unknown-host invariant wins over honoring ambient network
 config for a single identity probe.
 
-Deliberately NOT retried: this is an identity gate, not a transient-failure
-absorber. Retries (with the token attached) belong to ``fetch_hardening``, which
-runs only after identity is established. One shot, fail fast.
+The identity gate does not retry HTTP responses, including transient statuses:
+it cannot establish identity from them, so the run remains fail-shut. A read
+timeout is the sole exception because no response arrived to evaluate; after
+that one initial timeout, the gate makes one retry with a two-second timeout
+cap. Both attempts use the same isolated session without credentials. Retries
+with the token attached belong to ``fetch_hardening``, which runs only after
+identity is established.
 
 Signatures observed live:
 
@@ -113,6 +119,9 @@ _AUTH_GATED_STATUSES = frozenset({401, 403})
 # message so the operator doesn't chase a phantom hijack.
 _TRANSIENT_STATUSES = frozenset({408, 429, 502, 503, 504})
 
+# Bound the extra startup delay after the normal preflight request times out.
+_READ_TIMEOUT_RETRY_CAP_SECONDS = 2.0
+
 # Cap on the body echoed into an ApiIdentityError, shared with the Mantic preflight so both gates document one cap.
 BODY_PREVIEW_CHARS = 200
 
@@ -147,12 +156,14 @@ def _parse_json_object(body: str) -> dict[str, Any] | None:
 def verify_api_identity(base_url: str, *, timeout: float = 20.0) -> None:
     """Confirm ``base_url`` is answered by the real question-platform API before any authed call.
 
-    Sends ONE unauthenticated GET (no token, no headers) to ``{base_url}/posts/?limit=1``
+    Sends an unauthenticated GET (no token, no headers) to ``{base_url}/posts/?limit=1``
     through an isolated ``trust_env=False`` session (so no netrc/env credential is
-    attached). Passes silently on a real API's fingerprint — an auth-gated 401/403
+    attached). Retries once with a two-second timeout cap only if the first request
+    raises ``ReadTimeout``. Passes silently on a real API's fingerprint — an auth-gated 401/403
     (Metaculus without a token) or a 200 JSON object carrying ``results`` (Metaculus with
     a token; Mantic, whose posts list is public); raises ``ApiIdentityError`` with a
-    diagnostic naming the vetted host on anything else. Never retries — see module docstring.
+    diagnostic naming the vetted host on anything else. HTTP responses and other transport
+    failures are never retried — see module docstring.
     """
     url = _preflight_url(base_url)
     host = urlparse(base_url).hostname or base_url
@@ -160,11 +171,26 @@ def verify_api_identity(base_url: str, *, timeout: float = 20.0) -> None:
     try:
         with requests.Session() as session:
             session.trust_env = False  # do not let ~/.netrc or proxy env inject credentials
-            response = session.get(url, timeout=timeout, allow_redirects=False)
+            try:
+                response = session.get(url, timeout=timeout, allow_redirects=False)
+            except requests.ReadTimeout:
+                try:
+                    response = session.get(
+                        url,
+                        timeout=min(timeout, _READ_TIMEOUT_RETRY_CAP_SECONDS),
+                        allow_redirects=False,
+                    )
+                except requests.RequestException as retry_error:
+                    raise ApiIdentityError(
+                        f"{preflight} timed out waiting for a response from {url!r} on its first request; "
+                        f"the bounded retry failed ({type(retry_error).__name__}: {retry_error}). "
+                        "API identity remains unverified; a later retry of the whole run is appropriate; "
+                        "do NOT retry with credentials."
+                    ) from retry_error
     except requests.RequestException as e:
         raise ApiIdentityError(
-            f"{preflight} could not reach {url!r} ({type(e).__name__}: {e}); "
-            "DNS/TLS/connect failure before any response. "
+            f"{preflight} request for {url!r} failed ({type(e).__name__}: {e}); "
+            "could not verify API identity. "
             f"Do NOT retry with credentials; check `dig {host}` and the platform's status channels."
         ) from e
 
