@@ -77,8 +77,8 @@ Metaculus platform with the same API, by swapping in a different platform client
 You need Python 3.12 or newer and [uv](https://docs.astral.sh/uv/).
 
 ```bash
-git clone https://github.com/No-Stream/metaculus-bot.git
-cd metaculus-bot
+git clone https://github.com/No-Stream/nostreambot-metaculus-bot.git
+cd nostreambot-metaculus-bot
 uv sync --dev          # or: make install
 cp .env.template .env  # then fill in your credentials
 ```

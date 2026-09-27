@@ -40,7 +40,7 @@ from scripts.gha_artifacts import (
     store_run_dir,
 )
 
-REPO = "No-Stream/metaculus-bot"
+REPO = "No-Stream/nostreambot-metaculus-bot"
 
 
 @pytest.mark.parametrize("repetition", range(2))

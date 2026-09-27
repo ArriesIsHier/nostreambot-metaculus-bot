@@ -395,8 +395,7 @@ replay_ladder:
 # token redacted and, when CRONJOB_API_KEY and GH_DISPATCH_TOKEN are both set, the
 # create/update/unchanged plan from a read-only list of the account; it never writes.
 # ARGS="--apply" is PAID (ask-first gate, see AGENTS.md): it creates or changes a live schedule,
-# and every firing it adds is a paid, publishing bot run. ARGS="--apply --enable-mantic" once
-# run_bot_on_mantic.yaml is on main.
+# and every firing it adds is a paid, publishing bot run. It reconciles all three jobs, including Mantic.
 cronjob_dispatch_setup:
 	uv run python scripts/cronjob_dispatch_setup.py $(ARGS)
 

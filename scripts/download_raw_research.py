@@ -43,7 +43,7 @@ from scripts.telemetry.jsonl import load_jsonl_records
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_REPO = "No-Stream/metaculus-bot"
+DEFAULT_REPO = "No-Stream/nostreambot-metaculus-bot"
 DEFAULT_ARCHIVE_DIR = "backtests/research_archive/raw"
 
 # raw_research_<run_id>.jsonl — the run_id is the GITHUB_RUN_ID stamped at write time

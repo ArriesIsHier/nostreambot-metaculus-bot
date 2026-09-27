@@ -13,7 +13,6 @@ repository only) from the environment after the repo's .env load and never print
 Usage:
     make cronjob_dispatch_setup                                 # dry run: payloads (token redacted) + plan
     make cronjob_dispatch_setup ARGS="--apply"                  # PAID: create/update the live jobs; ask first
-    make cronjob_dispatch_setup ARGS="--apply --enable-mantic"  # once run_bot_on_mantic.yaml is on main
 """
 
 from __future__ import annotations
@@ -37,7 +36,9 @@ GH_DISPATCH_TOKEN_ENV = "GH_DISPATCH_TOKEN"  # noqa: S105  # env var NAME, not a
 GH_DISPATCH_TOKEN_PLACEHOLDER = "<GH_DISPATCH_TOKEN>"  # noqa: S105  # a placeholder, not a credential
 
 CRONJOB_API_BASE = "https://api.cron-job.org"
-GITHUB_DISPATCH_URL = "https://api.github.com/repos/No-Stream/metaculus-bot/actions/workflows/{workflow}/dispatches"
+GITHUB_DISPATCH_URL = (
+    "https://api.github.com/repos/No-Stream/nostreambot-metaculus-bot/actions/workflows/{workflow}/dispatches"
+)
 GITHUB_DISPATCH_BODY = '{"ref":"main"}'
 GITHUB_API_VERSION = "2022-11-28"
 REQUEST_TIMEOUT_SECS = 30
@@ -73,8 +74,7 @@ class DispatchJob:
 DISPATCH_JOBS: tuple[DispatchJob, ...] = (
     DispatchJob("metaculus-bot dispatch: tournament", "run_bot_on_tournament.yaml", (2, 32), enabled=True),
     DispatchJob("metaculus-bot dispatch: metaculus cup", "run_bot_on_metaculus_cup.yaml", (12, 42), enabled=True),
-    # Disabled until run_bot_on_mantic.yaml is on main (GitHub 404s a dispatch for a file main lacks); --enable-mantic flips it.
-    DispatchJob("metaculus-bot dispatch: mantic", MANTIC_WORKFLOW_FILE, (1, 16), enabled=False),
+    DispatchJob("metaculus-bot dispatch: mantic", MANTIC_WORKFLOW_FILE, (1, 16), enabled=True),
 )
 
 
@@ -94,13 +94,12 @@ class CronJobApiError(Exception):
         self.body = body
 
 
-def build_job_payload(job: DispatchJob, gh_token: str, *, enable_mantic: bool = False) -> dict[str, Any]:
+def build_job_payload(job: DispatchJob, gh_token: str) -> dict[str, Any]:
     """The cron-job.org ``job`` object for ``job``, in the REST API's own field names."""
-    enabled = job.enabled or (enable_mantic and job.workflow_file == MANTIC_WORKFLOW_FILE)
     return {
         "title": job.title,
         "url": GITHUB_DISPATCH_URL.format(workflow=job.workflow_file),
-        "enabled": enabled,
+        "enabled": job.enabled,
         "saveResponses": False,
         "requestMethod": REQUEST_METHOD_POST,
         "schedule": {
@@ -237,11 +236,6 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Create or update the live cron-job.org jobs. PAID: every firing is a bot run; ask the operator first.",
     )
-    parser.add_argument(
-        "--enable-mantic",
-        action="store_true",
-        help=f"Enable the Mantic dispatcher too (only once {MANTIC_WORKFLOW_FILE} is on main).",
-    )
     return parser
 
 
@@ -255,18 +249,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     if not args.apply:
         for job in DISPATCH_JOBS:
             print(f"--- {job.title} ({job.workflow_file}) ---")
-            print(
-                json.dumps(
-                    build_job_payload(job, GH_DISPATCH_TOKEN_PLACEHOLDER, enable_mantic=args.enable_mantic), indent=2
-                )
-            )
+            print(json.dumps(build_job_payload(job, GH_DISPATCH_TOKEN_PLACEHOLDER), indent=2))
     if missing:
         print(
             f"Skipped reading the cron-job.org account: {' and '.join(missing)} not set, so there is no create/update plan."
         )
         return 0
     gh_token = os.environ[GH_DISPATCH_TOKEN_ENV]
-    payloads = [build_job_payload(job, gh_token, enable_mantic=args.enable_mantic) for job in DISPATCH_JOBS]
+    payloads = [build_job_payload(job, gh_token) for job in DISPATCH_JOBS]
     client = CronJobClient(os.environ[CRONJOB_API_KEY_ENV])
     try:
         actions = plan_actions(client, payloads)

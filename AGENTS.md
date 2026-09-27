@@ -28,7 +28,7 @@ run, surface the exact command and rough cost, then stop.
 | `make strip_bench` | ~$1.25; `ARGS="--dry-run"` is the free view |
 | `uv run python scripts/probes/gemini_verify.py --i-accept-spend` | three live google-genai calls, personal AI Studio key; refuses without the flag |
 | Any bot workflow run or dispatch (`run_bot_on_*.yaml`, `test_bot*.yaml`); any edit to a `schedule:` block or to a research or model flag that adds runs or raises per-run cost | spends and publishes exactly as a local run |
-| `make cronjob_dispatch_setup ARGS="--apply"` (and `--enable-mantic`) | every firing it adds is a paid, publishing bot run |
+| `make cronjob_dispatch_setup ARGS="--apply"` | every firing it adds is a paid, publishing bot run |
 | `fetch_diagnostic.yaml` dispatch | cannot spend or publish by construction, but burns Actions minutes and probes federal hosts from the runner IP |
 | Any one-off script reaching a research provider or the ensemble | same rule |
 
@@ -37,7 +37,7 @@ make their own OpenRouter calls, and the Gemini `url_context` rung spends the pe
 `RESOLUTION_SOURCE_URL_CONTEXT_MAX_ATTEMPTS` per question. Two enablement facts: `run_bot_on_minibench.yaml` is
 `disabled_manually` by operator design and has never been enabled, so minibench questions with zero bot forecasts are
 expected and not worth raising, and the Metaculus Cup workflow is enabled for fall 2026. `gh` needs
-`--repo No-Stream/metaculus-bot`. Detail: `docs/operations.md`.
+`--repo No-Stream/nostreambot-metaculus-bot`. Detail: `docs/operations.md`.
 
 **Free, run freely.** `make test`, `test_fast`, `test_e2e`, `lint`, `format`, `typecheck`, `typecheck_ty`, `cov`,
 `audit`, `deps`, `lint_imports`, `precommit*`. The suite is self-contained: `e2e` means full pipeline with MOCKED LLMs,
@@ -174,7 +174,7 @@ and wait on running subagents rather than idling when no independent work is lef
 **CI green is the gate, not a local green run.** A test depending on the developer's environment (an absolute path, the
 checkout location, `$HOME`, gitignored local data) passes locally by construction, so CI is the first place it can fail,
 and one such test has shipped. Assert a repo-relative suffix, or skip when the artifact is machine-specific. Then
-`gh run list --repo No-Stream/metaculus-bot --branch <branch>`.
+`gh run list --repo No-Stream/nostreambot-metaculus-bot --branch <branch>`.
 
 Commits take a concise imperative subject ("fix test cmd", "migrate to uv") and a short body when context helps. `main`
 is ruleset-protected and a pre-commit hook refuses commits on it, so work on a branch. PRs: clear description, linked

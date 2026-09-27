@@ -21,6 +21,8 @@ from scripts.download_research import LOG_BACKFILL_RUN_MODE
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_REPO = "No-Stream/nostreambot-metaculus-bot"
+
 # --- Regex patterns for parsing GHA log lines ---
 
 RESEARCH_START = re.compile(
@@ -192,7 +194,7 @@ def main():
         help="Where to write JSONL output",
     )
     parser.add_argument("--dry-run", action="store_true", help="Just list qualifying runs without downloading logs")
-    parser.add_argument("--repo", default="No-Stream/metaculus-bot", help="GitHub repo")
+    parser.add_argument("--repo", default=DEFAULT_REPO, help="GitHub repo")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s - %(message)s")

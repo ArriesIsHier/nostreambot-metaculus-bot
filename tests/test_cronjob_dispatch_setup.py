@@ -118,8 +118,8 @@ class FakeCronJobApi:
         return [call for call in self.calls if call[0] in ("PUT", "PATCH")]
 
 
-def desired(job: DispatchJob, *, enable_mantic: bool = False) -> dict[str, Any]:
-    return build_job_payload(job, FAKE_GH_TOKEN, enable_mantic=enable_mantic)
+def desired(job: DispatchJob) -> dict[str, Any]:
+    return build_job_payload(job, FAKE_GH_TOKEN)
 
 
 def payloads_printed(out: str) -> dict[str, dict[str, Any]]:
@@ -165,7 +165,7 @@ class TestJobTable:
         assert [(job.title, job.workflow_file, job.minutes, job.enabled) for job in DISPATCH_JOBS] == [
             ("metaculus-bot dispatch: tournament", "run_bot_on_tournament.yaml", (2, 32), True),
             ("metaculus-bot dispatch: metaculus cup", "run_bot_on_metaculus_cup.yaml", (12, 42), True),
-            ("metaculus-bot dispatch: mantic", "run_bot_on_mantic.yaml", (1, 16), False),
+            ("metaculus-bot dispatch: mantic", "run_bot_on_mantic.yaml", (1, 16), True),
         ]
 
     def test_titles_are_unique_because_they_are_the_match_key(self):
@@ -181,7 +181,7 @@ class TestJobPayload:
     def test_tournament_payload_exactly(self):
         assert build_job_payload(TOURNAMENT, GH_DISPATCH_TOKEN_PLACEHOLDER) == {
             "title": "metaculus-bot dispatch: tournament",
-            "url": "https://api.github.com/repos/No-Stream/metaculus-bot/actions/workflows/run_bot_on_tournament.yaml/dispatches",
+            "url": "https://api.github.com/repos/No-Stream/nostreambot-metaculus-bot/actions/workflows/run_bot_on_tournament.yaml/dispatches",
             "enabled": True,
             "saveResponses": False,
             "requestMethod": 1,
@@ -216,14 +216,12 @@ class TestJobPayload:
         assert payload["schedule"]["minutes"] == list(job.minutes)
         assert payload["enabled"] is job.enabled
 
-    def test_enable_mantic_flips_only_the_mantic_job(self):
-        flags = {job.workflow_file: desired(job, enable_mantic=True)["enabled"] for job in DISPATCH_JOBS}
-        assert flags == {
+    def test_every_dispatch_job_is_enabled_by_default(self):
+        assert {job.workflow_file: desired(job)["enabled"] for job in DISPATCH_JOBS} == {
             "run_bot_on_tournament.yaml": True,
             "run_bot_on_metaculus_cup.yaml": True,
             "run_bot_on_mantic.yaml": True,
         }
-        assert desired(MANTIC)["enabled"] is False
 
 
 class TestJobMatches:
@@ -285,9 +283,16 @@ class TestDryRun:
         assert FAKE_API_KEY not in out
 
     @pytest.mark.usefixtures("clean_env", "no_session")
-    def test_enable_mantic_shows_the_mantic_payload_enabled(self, capsys):
-        assert main(["--enable-mantic"]) == 0
+    def test_dry_run_shows_the_mantic_payload_enabled_by_default(self, capsys):
+        assert main([]) == 0
         assert payloads_printed(capsys.readouterr().out)[MANTIC.title]["enabled"] is True
+
+    def test_obsolete_enable_mantic_option_is_rejected(self, capsys):
+        with pytest.raises(SystemExit) as excinfo:
+            main(["--enable-mantic"])
+
+        assert excinfo.value.code == 2
+        assert "unrecognized arguments: --enable-mantic" in capsys.readouterr().err
 
     @pytest.mark.usefixtures("secrets_env")
     def test_with_secrets_plans_against_the_account_without_writing(self, monkeypatch, capsys):
@@ -302,7 +307,7 @@ class TestDryRun:
         assert plan == [
             "would-create  id=-         minutes=2,32   enabled=true   metaculus-bot dispatch: tournament",
             "unchanged     id=501       minutes=12,42  enabled=true   metaculus-bot dispatch: metaculus cup",
-            "would-update  id=502       minutes=1,16   enabled=false  metaculus-bot dispatch: mantic",
+            "would-update  id=502       minutes=1,16   enabled=true   metaculus-bot dispatch: mantic",
         ]
         assert api.writes == []
         assert [call[:2] for call in api.calls] == [("GET", "/jobs"), ("GET", "/jobs/501"), ("GET", "/jobs/502")]
@@ -336,7 +341,7 @@ class TestApply:
     @pytest.mark.usefixtures("secrets_env")
     def test_apply_creates_updates_and_leaves_unchanged(self, monkeypatch, capsys):
         stale_mantic = remote_job(desired(MANTIC), 502)
-        stale_mantic["enabled"] = True
+        stale_mantic["schedule"]["minutes"] = [5, 35]
         api = install_fake_api(monkeypatch, FakeCronJobApi([remote_job(desired(CUP), 501), stale_mantic]))
         sleeps: list[float] = []
         monkeypatch.setattr(setup.time, "sleep", sleeps.append)
@@ -347,14 +352,14 @@ class TestApply:
         assert out.splitlines() == [
             "create        id=9001      minutes=2,32   enabled=true   metaculus-bot dispatch: tournament",
             "unchanged     id=501       minutes=12,42  enabled=true   metaculus-bot dispatch: metaculus cup",
-            "update        id=502       minutes=1,16   enabled=false  metaculus-bot dispatch: mantic",
+            "update        id=502       minutes=1,16   enabled=true   metaculus-bot dispatch: mantic",
         ]
         assert api.writes == [
             ("PUT", "/jobs", {"job": desired(TOURNAMENT)}),
             ("PATCH", "/jobs/502", {"job": desired(MANTIC)}),
         ]
         assert sleeps == [setup.WRITE_SPACING_SECS]
-        assert api.jobs[502]["enabled"] is False
+        assert api.jobs[502]["enabled"] is True
         assert FAKE_GH_TOKEN not in out
 
     @pytest.mark.usefixtures("secrets_env")
@@ -372,16 +377,16 @@ class TestApply:
         assert all(line.startswith("unchanged") for line in capsys.readouterr().out.splitlines())
 
     @pytest.mark.usefixtures("secrets_env")
-    def test_enable_mantic_on_a_later_apply_patches_the_enabled_flag(self, monkeypatch, capsys):
+    def test_plain_apply_keeps_the_active_mantic_job_enabled(self, monkeypatch, capsys):
         api = install_fake_api(
             monkeypatch, FakeCronJobApi([remote_job(desired(job), 600 + i) for i, job in enumerate(DISPATCH_JOBS)])
         )
 
-        assert main(["--apply", "--enable-mantic"]) == 0
+        assert main(["--apply"]) == 0
 
-        assert api.writes == [("PATCH", "/jobs/602", {"job": desired(MANTIC, enable_mantic=True)})]
+        assert api.writes == []
         assert api.jobs[602]["enabled"] is True
-        assert "update        id=602" in capsys.readouterr().out
+        assert "unchanged     id=602" in capsys.readouterr().out
 
     @pytest.mark.usefixtures("secrets_env")
     def test_non_2xx_exits_non_zero_with_status_and_body_and_no_secret(self, monkeypatch, capsys):
