@@ -287,9 +287,10 @@ async def _run_analyzer(
 ) -> list[dict[str, Any]]:
     """Call the analyzer LLM (no grounding) to identify and grade gaps.
 
-    Runs gpt-6-sol at low effort via OpenRouter (with donated-key
+    Runs gpt-6.1-sol at low effort via OpenRouter (with donated-key
     fallback; gpt-5.6-terra -> gpt-6-sol on the 2026-09-22 migration, Terra
-    having no GPT-6 successor). The analyzer is non-grounded so it doesn't need
+    having no GPT-6 successor, then gpt-6-sol -> gpt-6.1-sol on 2026-09-29).
+    The analyzer is non-grounded so it doesn't need
     Google's search index; the task is gap decomposition (not deep judgment)
     under a tight soft-fail wall cap, so low effort is the latency-safe tier.
 

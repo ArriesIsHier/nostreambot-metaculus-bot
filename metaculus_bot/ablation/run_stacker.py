@@ -14,9 +14,10 @@ opus-5.5 (``STACKER_LLM`` in ``llm_configs.py``, opus-4.8 -> opus-5.5 on the 202
 migration; the slot has been Anthropic since 2026-07-20, when fable-5 left both roles), because a
 gpt-5.5 primary 404ed ("no endpoints available", a data-policy guardrail) on every request from the
 operator's local donated key while the GitHub-secret key worked; Anthropic models clear it. The
-``gpt-6-sol`` fallback matches prod ``STACKER_FALLBACK_LLM`` (gpt-5.6-sol -> gpt-6-sol on the
-2026-09-22 migration) and sits on a different provider so an Anthropic stall cannot take both
-attempts down. Both go through ``build_llm_with_openrouter_fallback`` so the Metaculus-donated
+``gpt-6.1-sol`` fallback matches prod ``STACKER_FALLBACK_LLM`` (gpt-5.6-sol -> gpt-6-sol on the
+2026-09-22 migration, then gpt-6-sol -> gpt-6.1-sol on 2026-09-29) and sits on a different provider
+so an Anthropic stall cannot take both attempts down. Both go through
+``build_llm_with_openrouter_fallback`` so the Metaculus-donated
 OpenRouter key absorbs cost ahead of the operator's paid key; that wrapper handles the
 donated-to-paid fallback on credit/auth/data-policy errors itself, so the outer
 primary-to-fallback chain in ``run_stacker_for_arm`` is a defense-in-depth backstop, not the
@@ -78,9 +79,9 @@ ARM_MEAN = "mean"  # deterministic mean over base predictions, no LLM (see metac
 
 # Not prod's opus-5.5: a gpt-5.5 primary 404ed on the operator's local donated key; see the module docstring.
 DEFAULT_STACKER_MODEL = "openrouter/anthropic/claude-opus-4.5"
-# Matches prod STACKER_FALLBACK_LLM (gpt-5.6-sol -> gpt-6-sol on the 2026-09-22 migration); a different
-# provider than the primary on purpose.
-DEFAULT_STACKER_FALLBACK_MODEL = "openrouter/openai/gpt-6-sol"
+# Matches prod STACKER_FALLBACK_LLM (gpt-5.6-sol -> gpt-6-sol on 2026-09-22, then
+# gpt-6-sol -> gpt-6.1-sol on 2026-09-29); a different provider than the primary on purpose.
+DEFAULT_STACKER_FALLBACK_MODEL = "openrouter/openai/gpt-6.1-sol"
 DEFAULT_PARSER_MODEL = "openrouter/openai/gpt-oss-120b:free"
 
 # The --lineup prod stacker, a plain GeneralLlm with no donated-key wrapper; its posture mirrors the prod forecasters.
@@ -127,7 +128,7 @@ def _build_default_stacker_llm() -> GeneralLlm:
 
 
 def _build_default_fallback_stacker_llm() -> GeneralLlm:
-    """Fallback ablation stacker (gpt-6-sol).
+    """Fallback ablation stacker (gpt-6.1-sol).
 
     Mirrors production STACKER_FALLBACK_LLM. Different provider on purpose —
     if Anthropic is thrashing, retrying against Anthropic rarely recovers.

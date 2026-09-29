@@ -107,20 +107,19 @@ FORECASTER_LLMS: list[GeneralLlm] = [
     # OPENROUTER_API_KEY now; the other two slots route via the donated key.
     # (Dates anchor config eras for residual analysis.)
     #
-    # OpenAI flagship (5.6 series). 2026-07-20: effort xhigh -> high. The
+    # OpenAI flagship. 2026-07-20: effort xhigh -> high. The
     # reasoning-effort audit (scratch/reasoning_effort_audit_2026-07-20/) found
     # default->high clearly worth it but high->xhigh UNMEASURED, so we stop paying
     # the unmeasured premium here (the three slots measure within 12% of each other,
     # $0.24 to $0.27 a question, 2026-09-09). opus-4.8 keeps xhigh below as the remaining premium bet
     # (FUTURE.md "Price the high->xhigh reasoning-effort premium"). (2026-07-15
-    # had bumped this high -> xhigh.) Live-verified: OpenRouter's effort enum is
-    # max|xhigh|high|medium|low|minimal|none and this model accepts high (bogus
-    # values 400). NOTE: "max" is Anthropic-only — OpenAI's ceiling is xhigh and
-    # OpenAI rejects max upstream even though OpenRouter's enum validation admits it.
+    # had bumped this high -> xhigh.) GPT-6.1 Sol supports low, medium, high,
+    # xhigh and max reasoning effort per the official model documentation.
     # 2026-09-22: sol -> gpt-6-sol (GPT-6 release) and high -> xhigh (operator), matching the
     # Anthropic slot; a single prod-prompt timing probe checked it against FORECASTER_SOFT_DEADLINE.
+    # 2026-09-29: gpt-6-sol -> gpt-6.1-sol; effort and deadline settings unchanged.
     _forecaster_slot(
-        "openrouter/openai/gpt-6-sol",
+        "openrouter/openai/gpt-6.1-sol",
         reasoning={"effort": "xhigh"},
     ),
     # Anthropic slot. 2026-07-15: enabled:True (provider-default adaptive thinking)
@@ -174,8 +173,9 @@ FORECASTER_MODEL_NAMES: list[str] = [_forecaster_display_name(llm) for llm in FO
 # also uses UTILITY_MODEL_CONFIG) keeps its allowed_tries=3.
 # 2026-09-22: terra -> gpt-6-sol. Terra has no GPT-6 successor, so every Terra role
 # moves to Sol 6 at the same (low) effort it ran at.
+# 2026-09-29: gpt-6-sol -> gpt-6.1-sol; role settings unchanged.
 SUMMARIZER_LLM: GeneralLlm = build_llm_with_openrouter_fallback(
-    "openrouter/openai/gpt-6-sol",
+    "openrouter/openai/gpt-6.1-sol",
     role="summarizer",
     reasoning={"effort": "low"},
     **{**UTILITY_MODEL_CONFIG, "allowed_tries": 1},
@@ -231,14 +231,15 @@ STACKER_LLM: GeneralLlm = build_llm_with_openrouter_fallback(
 )
 
 # Fallback stacker used when the primary stacker times out or errors.
-# Reasoning slot → strongest OpenAI tier (gpt-6-sol, gpt-5.6-sol -> gpt-6-sol on
-# the 2026-09-22 GPT-6 migration) at xhigh (high -> xhigh 2026-09-22, operator:
+# Reasoning slot → strongest OpenAI tier (gpt-5.6-sol -> gpt-6-sol on the
+# 2026-09-22 GPT-6 migration, then gpt-6.1-sol on 2026-09-29) at xhigh
+# (high -> xhigh 2026-09-22, operator:
 # both stackers at xhigh; gpt-6-sol@xhigh took 72.5 s on a prod numeric forecaster
 # prompt that day); deliberately cross-provider from the Anthropic primary so an
 # Anthropic stall doesn't take both attempts down. Tighter timeout and single try
 # since we're already running late on the critical path by the time this fires.
 STACKER_FALLBACK_LLM: GeneralLlm = build_llm_with_openrouter_fallback(
-    "openrouter/openai/gpt-6-sol",
+    "openrouter/openai/gpt-6.1-sol",
     role="stacker_fallback",
     reasoning={"effort": "xhigh"},
     **{**REASONING_MODEL_CONFIG, "allowed_tries": 1, "timeout": 300},
@@ -320,8 +321,9 @@ MARKET_QUERY_AUTHOR_LLM_CONFIG: dict = {
 # Per-instance override so PARSER_LLM keeps its allowed_tries=3.
 # 2026-09-22: terra -> gpt-6-sol. Terra has no GPT-6 successor, so every Terra role
 # moves to Sol 6 at the same (low) effort it ran at.
+# 2026-09-29: gpt-6-sol -> gpt-6.1-sol; role settings unchanged.
 DISAGREEMENT_ANALYZER_LLM: GeneralLlm = build_llm_with_openrouter_fallback(
-    "openrouter/openai/gpt-6-sol",
+    "openrouter/openai/gpt-6.1-sol",
     role="crux_analyzer",
     reasoning={"effort": "low"},
     **{**UTILITY_MODEL_CONFIG, "allowed_tries": 1},
