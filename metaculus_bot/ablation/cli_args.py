@@ -331,7 +331,7 @@ def _build_parser() -> argparse.ArgumentParser:
         help=(
             "Forecaster ensemble: 'free' for the 4-model free-tier ablation (default), "
             "'prod' for the 3-model paid ensemble (claude-opus-4.6, claude-opus-5.5, "
-            "gpt-6-sol, all at medium reasoning effort). The 'prod' lineup also selects "
+            "gpt-6.1-sol, all at medium reasoning effort). The 'prod' lineup also selects "
             "the opus-5.5 prod stacker under --plain-llm."
         ),
     )

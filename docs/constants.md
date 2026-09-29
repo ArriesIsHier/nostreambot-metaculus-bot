@@ -484,6 +484,7 @@ Changed 2026-07-17 from sol to terra per the blind research-role audit in
 `scratch/research_role_audit_2026-07-17/`: terra won the native-search role first, sol second, luna
 third, with the verdict "MARGINAL EDGE". Changed again 2026-09-22, terra to `gpt-6-sol`: GPT-6 shipped
 with no Terra successor, so every Terra role moved to Sol 6 at the same (low) effort.
+Updated 2026-09-29 to `gpt-6.1-sol`, retaining low effort and the existing budgets.
 
 ### NATIVE_SEARCH_MAX_TOKENS
 
@@ -1180,6 +1181,7 @@ silently on breach, so low effort is the latency-safe choice: the task is decomp
 judgment. Grounded search resolution still uses google-genai directly via `gemini_search_provider`, because
 that path needs the search index. Changed 2026-09-22, terra to `gpt-6-sol`: GPT-6 shipped with no Terra
 successor, so every Terra role moved to Sol 6 at the same (low) effort.
+Updated 2026-09-29 to `gpt-6.1-sol`, retaining low effort and the existing budgets.
 
 ### GAP_FILL_MAX_GAPS
 
@@ -1236,6 +1238,7 @@ Changed from sol to terra on 2026-07-20. Terra was preferred or within noise aga
 consideration. The 2026-07-09 bench had sol-low matching terra-low coverage 24 of 25; the blind audits plus the
 cost weight flip it. Changed again 2026-09-22, terra to `gpt-6-sol`: GPT-6 shipped with no Terra successor, so
 every Terra role moved to Sol 6 at the same (low) effort.
+Updated 2026-09-29 to `gpt-6.1-sol`, retaining low effort and the existing budgets.
 
 ## Agentic gap-fill v2 (bounded research loop)
 
@@ -1280,6 +1283,7 @@ searches and came fifth; sonnet-5 cited unfetched URLs, which is disqualifying f
 were openai or anthropic, so the loop's litellm binding routes via the donated OpenRouter key. Changed
 2026-09-22, terra to `gpt-6-sol`: GPT-6 shipped with no Terra successor, so every Terra role moved to Sol 6 at
 the same (low) effort default.
+Updated 2026-09-29 to `gpt-6.1-sol`, retaining low effort and the existing budgets.
 
 ### GAP_FILL_V2_READER_MODEL
 
