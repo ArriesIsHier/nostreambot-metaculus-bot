@@ -15,12 +15,15 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 NOW = datetime(2026, 8, 31, 2, 24, tzinfo=UTC)
+# Far future, not just after NOW: the CLI tests run ``main``, which reads the real clock, and a
+# near default turned every default-scheduled question overdue once the calendar passed it.
+NOT_YET_DUE = "2099-01-01T00:00:00Z"
 
 
 def _question(
     qid: int,
     *,
-    scheduled: str | None = "2026-09-30T00:00:00Z",
+    scheduled: str | None = NOT_YET_DUE,
     actual: str | None = None,
     resolution: object = None,
     qtype: str = "numeric",

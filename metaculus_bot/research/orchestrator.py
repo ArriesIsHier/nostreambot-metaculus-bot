@@ -46,6 +46,7 @@ from metaculus_bot.constants import (
     env_flag_enabled,
 )
 from metaculus_bot.fallback_openrouter import _record_deprecation_if_matched
+from metaculus_bot.llm_retry import llm_error_fields
 from metaculus_bot.prompts import OUTSIDE_VENUE_MARKET_ODDS_POLICY
 from metaculus_bot.research import degradation_views
 from metaculus_bot.research.asknews_summarization import summarize_asknews
@@ -318,7 +319,7 @@ class ResearchOrchestrator:
 
         return providers
 
-    def _failed_provider_result(self, name: str, exc: Exception, latency_ms: int) -> ProviderResult:
+    def _failed_provider_result(self, name: str, exc: Exception, latency_ms: int, qid: int | None) -> ProviderResult:
         """Classify a provider that raised: ``inactive`` for expected off-season AskNews, else ``errored``.
 
         Only ``errored`` bumps ``provider_failure_count`` (which reddens CI) and
@@ -336,7 +337,9 @@ class ResearchOrchestrator:
         else:
             status = "errored"
             self.provider_failure_count += 1
-            logger.warning(f"Research provider {name} failed ({type(exc).__name__}): {exc}")
+            logger.warning(
+                f"RESEARCH_PROVIDER_FAILED: question={qid} provider={name} {llm_error_fields(exc)} detail={exc}"
+            )
             _record_deprecation_if_matched(f"<provider:{name}>", str(exc))
         return ProviderResult(
             name=name,
@@ -403,7 +406,7 @@ class ResearchOrchestrator:
                 # No stale entry may leak into a later call. See docs/research.md "Orchestrator implementation notes".
                 pop_provider_detail(qid, name)
                 latency_ms = int((time.monotonic() - started) * 1000)
-                return ("", self._failed_provider_result(name, e, latency_ms))
+                return ("", self._failed_provider_result(name, e, latency_ms, qid))
 
         results = await await_providers_within_deadline(providers, _run_one, time_budget)
         combined, provider_results = assemble_provider_sections(results)

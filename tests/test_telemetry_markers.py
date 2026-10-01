@@ -3732,6 +3732,101 @@ class TestGapFillAnalyzerFailed:
         assert rec["qid"] is None
         assert rec["error"] == "TimeoutError"
 
+    def test_status_is_read_when_present(self):
+        rec = _parse_one(
+            PFX_WARN + "GAP_FILL_ANALYZER_FAILED: question=44912 error=APIError status=502 detail=overloaded"
+        )
+        assert rec["error"] == "APIError"
+        assert rec["status"] == 502
+        assert rec["detail"] == "overloaded"
+
+    def test_pre_status_line_reads_status_as_none(self):
+        assert _parse_one(GAP_FILL_ANALYZER_FAILED_LINE)["status"] is None
+
+
+# Shape from research/targeted.py:run_gap_fill_pass; see docs/telemetry_markers.md "GAP_FILL_V1_SEARCH_FAILED".
+GAP_FILL_V1_SEARCH_FAILED_LINE = (
+    PFX_WARN + "GAP_FILL_V1_SEARCH_FAILED: question=44912 gap=2 error=APIError status=502 "
+    "detail=litellm.APIError: APIError: OpenrouterException - Our servers are currently overloaded."
+)
+
+
+class TestGapFillV1SearchFailed:
+    def test_fields(self):
+        rec = _parse_one(GAP_FILL_V1_SEARCH_FAILED_LINE)
+        assert rec["marker"] == "gap_fill_v1_search_failed"
+        assert rec["gap"] == 2
+        assert rec["error"] == "APIError"
+        assert rec["status"] == 502
+        assert rec["detail"].endswith("Our servers are currently overloaded.")
+
+    def test_question_ref_is_a_question_id(self):
+        rec = _parse_one(GAP_FILL_V1_SEARCH_FAILED_LINE)
+        assert rec["qid"] == 44912
+        assert rec["qid_kind"] == "question_id"
+
+    def test_statusless_error_reads_none(self):
+        rec = _parse_one(
+            PFX_WARN + "GAP_FILL_V1_SEARCH_FAILED: question=44912 gap=1 error=AssertionError status=None "
+            "detail=Answer is not a string and is of type: <class 'NoneType'>. Answer: None"
+        )
+        assert rec["error"] == "AssertionError"
+        assert rec["status"] is None
+
+
+# Shape from research/orchestrator.py:_failed_provider_result; see docs/telemetry_markers.md "RESEARCH_PROVIDER_FAILED".
+RESEARCH_PROVIDER_FAILED_LINE = (
+    PFX_WARN + "RESEARCH_PROVIDER_FAILED: question=44912 provider=native_search error=APIError status=502 "
+    "detail=litellm.APIError: APIError: OpenrouterException - Our servers are currently overloaded."
+)
+
+
+class TestResearchProviderFailed:
+    def test_fields(self):
+        rec = _parse_one(RESEARCH_PROVIDER_FAILED_LINE)
+        assert rec["marker"] == "research_provider_failed"
+        assert rec["provider"] == "native_search"
+        assert rec["error"] == "APIError"
+        assert rec["status"] == 502
+        assert rec["detail"].startswith("litellm.APIError")
+
+    def test_question_ref_is_a_question_id(self):
+        rec = _parse_one(RESEARCH_PROVIDER_FAILED_LINE)
+        assert rec["qid"] == 44912
+        assert rec["qid_kind"] == "question_id"
+
+
+# Shape from llm_retry.py:invoke_with_transient_retry; see docs/telemetry_markers.md "LLM_RETRY".
+LLM_RETRY_FAST_LINE = (
+    PFX_WARN + "LLM_RETRY[native_search]: fast retryable failure on attempt 1/4 (error=APIError status=502, "
+    "elapsed=1.798s < 30.0s); retrying after 1.0s backoff: litellm.APIError: APIError: OpenrouterException - "
+    "Our servers are currently overloaded."
+)
+LLM_RETRY_ZERO_OUTPUT_LINE = (
+    PFX_WARN + "LLM_RETRY[forecaster_binary]: slow zero-output failure on attempt 1/4 (error=APIError status=200, "
+    "elapsed=95.120s >= 30.0s); re-rolling once immediately, no backoff — provider returned no usable content: "
+    "Unable to get json response"
+)
+
+
+class TestLlmRetry:
+    def test_fast_retry_fields(self):
+        rec = _parse_one(LLM_RETRY_FAST_LINE)
+        assert rec["marker"] == "llm_retry"
+        assert rec["label"] == "native_search"
+        assert rec["kind"] == "fast retryable"
+        assert rec["attempt"] == 1
+        assert rec["attempts"] == 4
+        assert rec["error"] == "APIError"
+        assert rec["status"] == 502
+        assert rec["elapsed_s"] == pytest.approx(1.798)
+
+    def test_zero_output_reroll_fields(self):
+        rec = _parse_one(LLM_RETRY_ZERO_OUTPUT_LINE)
+        assert rec["kind"] == "slow zero-output"
+        assert rec["status"] == 200
+        assert rec["elapsed_s"] == pytest.approx(95.12)
+
 
 # Verbatim from research/targeted.py:run_gap_fill_pass; see docs/telemetry_markers.md "GAP_FILL_V1_TRIAGE".
 GAP_FILL_V1_TRIAGE_LINE = (

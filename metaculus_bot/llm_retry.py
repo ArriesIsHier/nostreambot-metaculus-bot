@@ -128,6 +128,12 @@ PYTHON_BUG_NO_RETRY_EXCEPTIONS: tuple[type[BaseException], ...] = (
 # with the new status stops being re-rolled).
 NON_RETRYABLE_HTTP_STATUS_CODES: frozenset[int] = frozenset({400, 401, 402, 403, 404, 422})
 
+# A bare ``APIError`` carrying one of these is a server-side blip the transient check
+# retries like the typed 5xx classes. litellm types only 503/504 for OpenRouter; any
+# other 5xx, such as the in-body "Our servers are currently overloaded" error of
+# 2026-10-01, arrives untyped and used to fail on its first attempt.
+TRANSIENT_HTTP_STATUS_CODES: range = range(500, 600)
+
 # Universal deadline-safety rule (Round-2): a failure whose own attempt took
 # longer than this (seconds) is treated as SLOW and NEVER retried, regardless of
 # exception type or predicate. A multi-minute reasoning attempt that then times out
@@ -143,8 +149,15 @@ DEFAULT_TRANSIENT_BACKOFFS: tuple[float, ...] = (1.0, 10.0, 30.0)
 
 
 def _is_transient_type(exc: BaseException) -> bool:
-    """Default retry predicate: the exception's type is a fast transient blip."""
-    return isinstance(exc, TRANSIENT_RETRY_EXCEPTIONS)
+    """Default retry predicate: the exception is a fast transient blip, by type or by 5xx status.
+
+    A zero-output body is excluded even at a 5xx status: it is not a transient type, and
+    admitting it here would hand the slow zero-output re-roll to the stacker and
+    research sites, whose budgets that exemption deliberately leaves alone.
+    """
+    if isinstance(exc, TRANSIENT_RETRY_EXCEPTIONS):
+        return True
+    return llm_status_code(exc) in TRANSIENT_HTTP_STATUS_CODES and not is_zero_output_failure(exc)
 
 
 # Message markers for the empty/whitespace-body case: litellm re-wraps a
@@ -219,6 +232,16 @@ def llm_status_code(exc: BaseException) -> int | None:
     return status if isinstance(status, int) else None
 
 
+def llm_error_fields(exc: BaseException) -> str:
+    """``error=<type> status=<HTTP status>`` for failure and retry markers.
+
+    The status reads ``None`` outside the LLM exception tree (the registry's null
+    sentinel). The type alone cannot tell an overloaded 502 from a hard 403 once litellm
+    has collapsed both to a bare ``APIError``.
+    """
+    return f"error={type(exc).__name__} status={llm_status_code(exc)}"
+
+
 def _is_deterministic_client_error(exc: BaseException) -> bool:
     """Whether ``exc`` is an LLM API failure whose HTTP status makes a retry pointless."""
     return llm_status_code(exc) in NON_RETRYABLE_HTTP_STATUS_CODES
@@ -246,15 +269,15 @@ def is_broadly_retryable(exc: BaseException) -> bool:
     return not isinstance(exc, PERMANENT_NO_RETRY_EXCEPTIONS + PYTHON_BUG_NO_RETRY_EXCEPTIONS)
 
 
-async def invoke_with_transient_retry(
-    make_awaitable: Callable[[], Awaitable[str]],
+async def invoke_with_transient_retry[T](
+    make_awaitable: Callable[[], Awaitable[T]],
     *,
     wall_timeout: float,
     label: str,
     backoffs: tuple[float, ...] = DEFAULT_TRANSIENT_BACKOFFS,
     max_elapsed_s: float = TRANSIENT_RETRY_MAX_ELAPSED_S,
     predicate: Callable[[BaseException], bool] | None = None,
-) -> str:
+) -> T:
     """Invoke an async LLM call with an elapsed-gated retry + wall cap.
 
     Each attempt wraps ``make_awaitable()`` in ``asyncio.wait_for(..., wall_timeout)``
@@ -324,14 +347,14 @@ async def invoke_with_transient_retry(
                 zero_output_reroll_used = True
                 logger.warning(
                     f"LLM_RETRY[{label}]: slow zero-output failure on attempt {attempt + 1}/{total_attempts} "
-                    f"({type(exc).__name__}, {elapsed=:.3f}s >= {max_elapsed_s}s); re-rolling once immediately, "
+                    f"({llm_error_fields(exc)}, {elapsed=:.3f}s >= {max_elapsed_s}s); re-rolling once immediately, "
                     f"no backoff — provider returned no usable content: {exc}"
                 )
                 continue
             backoff = backoffs[attempt]
             logger.warning(
                 f"LLM_RETRY[{label}]: fast retryable failure on attempt {attempt + 1}/{total_attempts} "
-                f"({type(exc).__name__}, {elapsed=:.3f}s < {max_elapsed_s}s); retrying after {backoff}s backoff: {exc}"
+                f"({llm_error_fields(exc)}, {elapsed=:.3f}s < {max_elapsed_s}s); retrying after {backoff}s backoff: {exc}"
             )
             await asyncio.sleep(backoff)
 

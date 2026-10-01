@@ -14,6 +14,7 @@ import logging
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import litellm.exceptions as litellm_exc
 import pytest
 from forecasting_tools import GeneralLlm
 
@@ -28,6 +29,7 @@ from metaculus_bot.research.provider_diagnostics import (
     pop_provider_detail,
     record_provider_detail,
 )
+from scripts.telemetry.markers import MARKER_SPECS
 
 
 @pytest.fixture
@@ -873,6 +875,26 @@ class TestProviderDiagnosticsCapture:
         assert results[0].error_message is not None
         assert "boom" in results[0].error_message
         assert orch.provider_failure_count == 1
+
+    @pytest.mark.asyncio
+    async def test_raising_provider_emits_a_parseable_failure_marker(self, mock_llm, question, caplog):
+        orch = ResearchOrchestrator(default_llm=mock_llm, summarizer_llm=mock_llm, allow_research_fallback=False)
+        overloaded = litellm_exc.APIError(
+            status_code=502, message="overloaded", llm_provider="openrouter", model="openai/gpt-6.1-sol"
+        )
+        provider = AsyncMock(side_effect=overloaded)
+
+        with caplog.at_level(logging.WARNING, logger="metaculus_bot.research.orchestrator"):
+            await orch._run_providers_parallel(question, [(provider, "native_search")])
+
+        (line,) = [r.message for r in caplog.records if r.message.startswith("RESEARCH_PROVIDER_FAILED:")]
+        spec = next(spec for spec in MARKER_SPECS if spec.name == "research_provider_failed")
+        match = spec.regex.search(line)
+        assert match is not None, line
+        assert match["question"] == "42"
+        assert match["provider"] == "native_search"
+        assert match["error"] == "APIError"
+        assert match["status"] == "502"
 
     @pytest.mark.asyncio
     async def test_status_inactive_for_asknews_subscription_error(self, mock_llm, question):
