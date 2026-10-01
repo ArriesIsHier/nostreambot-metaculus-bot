@@ -84,6 +84,9 @@ incidents behind the design.
 | `GEMINI_USAGE` | `research/gemini_search.py`, `research/agentic/tool_backends.py`, `research/resolution_source.py` | Per-call google-genai token and grounded-query accounting for all three Gemini surfaces. |
 | `AGENTIC_DOCUMENT_UNGROUNDED_SUPPRESSED` | `research/agentic/tools.py:read_document` | The `read_document` twin of `GEMINI_UNGROUNDED_SUPPRESSED`. |
 | `GAP_FILL_ANALYZER_FAILED` | `research/targeted.py:run_gap_fill_pass` | Gap-fill v1's analyzer died. |
+| `GAP_FILL_V1_SEARCH_FAILED` | `research/targeted.py:run_gap_fill_pass` | Per-gap: one gap-fill v1 search died, with its error type and HTTP status. |
+| `RESEARCH_PROVIDER_FAILED` | `research/orchestrator.py:_failed_provider_result` | Per-provider: a research provider raised and was marked `errored`, with its error type and HTTP status. |
+| `LLM_RETRY` | `llm_retry.py:invoke_with_transient_retry` | Per-retry WARN: an LLM call failed and is being retried, with its error type, HTTP status and elapsed time. |
 | `GAP_FILL_V1_TRIAGE` | `research/targeted.py:run_gap_fill_pass` | Per-question gap-fill v1 triage: how many gaps the analyzer listed, how many the resolver searched, and the count dropped per reason before any spend. |
 | `CREDIT_BALANCE` / `CREDIT_SPEND` / `CREDIT_ROLE_SPEND` / `CREDIT_FLOOR_BREACH` | `credit_telemetry.py` | OpenRouter credit balance, spend, per-role spend, and floor-breach markers. |
 | `CREDIT_RUN_SUMMARY` | `credit_telemetry.py:log_run_summary` | Per-run, on every path: the role ledger folded to dollars per question, by key, with the run's token totals and largest prompt. |
@@ -1302,7 +1305,44 @@ had no gaps. Gap-fill isn't one of the orchestrator's `_run_one` providers, so i
 `ProviderResult` and no `lost=` token; this marker is the only durable signal, and v1's searches
 are one of the largest research spend lines (~44%). `detail` captures greedily to end-of-line
 because it holds the exception's `str`. `qid_kind` is `question_id` (`targeted.py` passes
-`question.id_of_question`).
+`question.id_of_question`). Since 2026-10-01 the line also carries `status=`, the HTTP status the
+LLM provider reported (`llm_retry.llm_error_fields`), or `None` outside the LLM exception tree;
+the group is optional so older lines still parse, with `status` read as `None`.
+
+### GAP_FILL_V1_SEARCH_FAILED
+
+Per-gap WARN (`research/targeted.py:run_gap_fill_pass`, added 2026-10-01) when one of gap-fill
+v1's searches raised. It replaced the unparsed `GapFill: gap #N search failed (Type): msg` line.
+The pass soft-fails per gap, so the `gap_fill_v1_errors` degradation counter only says that some
+gap died; this marker says which gap, of what error type, and at what HTTP status. The status is
+the reason the marker exists: on 2026-10-01 OpenRouter's "Our servers are currently overloaded"
+error arrived as a bare `APIError`, which by type alone looks the same as a hard 403. `status` is
+`None` for errors outside the LLM exception tree (for example forecasting-tools'
+`AssertionError` on a `None` answer). `detail` captures to end-of-line. `qid_kind` is
+`question_id`.
+
+### RESEARCH_PROVIDER_FAILED
+
+Per-provider WARN (`research/orchestrator.py:_failed_provider_result`, added 2026-10-01) when a
+research provider raised and was recorded as `errored`, the case that bumps
+`research_provider_failures` and reddens the run. It replaced the unparsed
+`Research provider X failed (Type): msg` line. The provider-status block in the research text
+already names the error type; this marker adds the HTTP status and makes the failure harvestable
+after the Actions logs expire. An AskNews subscription error logged as `inactive` is not a
+failure and does not emit it. Fields are as in `GAP_FILL_V1_SEARCH_FAILED`, with `provider`
+in place of `gap`. `qid_kind` is `question_id`.
+
+### LLM_RETRY
+
+Per-retry WARN from the shared elapsed-gated retry loop (`llm_retry.py:invoke_with_transient_retry`,
+which every research provider, gap-fill search, stacker, forecaster and, since 2026-10-01, the
+gap-fill v2 driver goes through). `label` is the call site. `kind` is `fast retryable` (a failure
+under the elapsed gate, retried after the backoff) or `slow zero-output` (the one immediate
+re-roll of an empty body). `attempt`/`attempts` count from 1. The line was emitted before
+2026-10-01 but had no spec and carried only the type name; it gained `error=<type> status=<code>`
+then, when 5xx bare `APIError`s became retryable, so a retry that succeeds still leaves a durable
+record of the provider blip it absorbed. The final failed attempt does not emit this line; the
+call site's own failure marker records it. No question ref, so `qid_kind` is None.
 
 ### GAP_FILL_V1_TRIAGE
 

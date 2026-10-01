@@ -14,6 +14,7 @@ from __future__ import annotations
 from typing import Any
 from unittest.mock import AsyncMock
 
+import litellm.exceptions as litellm_exc
 import pytest
 
 from metaculus_bot import fallback_openrouter
@@ -382,3 +383,34 @@ class TestDonatedMasterSwitch:
         kwargs = _last_kwargs(acompletion)
         assert kwargs["api_key"] == _DONATED
         assert kwargs["metadata"] == llm_call_metadata(agentic_llm.GAP_FILL_V2_DRIVER_ROLE, DONATED_KEY_ALIAS)
+
+
+class TestTransientRetry:
+    """The 2026-10-01 overload: a bare 5xx APIError killed the whole gap-fill v2 loop at step 0
+    because the driver call had no retry. The loop's own wall deadline still bounds the retries."""
+
+    @pytest.fixture(autouse=True)
+    def no_real_sleep(self, monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
+        fake_sleep = AsyncMock()
+        monkeypatch.setattr("metaculus_bot.llm_retry.asyncio.sleep", fake_sleep)
+        return fake_sleep
+
+    @pytest.mark.asyncio
+    async def test_overloaded_driver_call_is_retried(
+        self, acompletion: AsyncMock, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _set_keys(monkeypatch, donated=None, personal=_PERSONAL)
+        monkeypatch.setattr(agentic_llm, "should_route_via_donated_key", lambda model: False)
+        overloaded = litellm_exc.APIError(
+            status_code=502,
+            message="OpenrouterException - Our servers are currently overloaded. Please try again later.",
+            llm_provider="openrouter",
+            model="openai/gpt-6.1-sol",
+        )
+        acompletion.side_effect = [overloaded, {"ok": True}]
+
+        call = agentic_llm.build_default_llm_call(_config())
+        result = await call(_messages(), None)
+
+        assert result == {"ok": True}
+        assert acompletion.await_count == 2

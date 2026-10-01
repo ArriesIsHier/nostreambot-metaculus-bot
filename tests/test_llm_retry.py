@@ -56,6 +56,7 @@ from metaculus_bot.llm_retry import (
     invoke_with_broad_retry,
     invoke_with_transient_retry,
     is_broadly_retryable,
+    llm_error_fields,
     llm_status_code,
 )
 from metaculus_bot.research.market_retrieval.generation import MANIFOLD_DETAIL_WALL_S
@@ -1121,3 +1122,85 @@ async def test_slow_403_is_not_rescued_by_the_zero_output_exemption() -> None:
         await invoke_with_broad_retry(awaitable, wall_timeout=_BIG_WALL, label="forecaster_binary")
 
     assert awaitable.await_count == 1
+
+
+# ---------------------------------------------------------------------------
+# OpenRouter overload (2026-10-01). OpenRouter returned "Our servers are currently
+# overloaded" as an error object in the response body carrying a 5xx code. litellm
+# maps any OpenRouter status outside its short list (400/401/404/408/422/429/503/504)
+# to a BARE APIError, which the type-only transient check never retried: native_search
+# and two gap-fill v1 searches died in ~2s on the first attempt.
+# ---------------------------------------------------------------------------
+
+_PROD_OVERLOADED_MESSAGE = "OpenrouterException - Our servers are currently overloaded. Please try again later."
+
+
+@pytest.mark.parametrize("status", [500, 502, 520, 529])
+def test_transient_check_retries_a_bare_server_error_status(status: int) -> None:
+    assert _is_transient_type(_api_error_with_status(status, _PROD_OVERLOADED_MESSAGE)) is True
+
+
+@pytest.mark.parametrize("status", [200, 400, 402, 403, 404, 422, 429])
+def test_transient_check_still_rejects_a_bare_non_server_status(status: int) -> None:
+    """429 stays out on purpose: rate limits go through key-swap / AskNews backoff, as for RateLimitError."""
+    assert _is_transient_type(_api_error_with_status(status, _PROD_OVERLOADED_MESSAGE)) is False
+
+
+def test_transient_check_keeps_zero_output_bodies_out() -> None:
+    """A whitespace-body APIError arrives at 500 too; the transient sites must keep rejecting it, or the
+    slow zero-output re-roll would start firing on the stacker and research budgets."""
+    assert _is_transient_type(_api_error(_PROD_WHITESPACE_BODY_MESSAGE)) is False
+
+
+@pytest.mark.asyncio
+async def test_fast_overloaded_error_is_retried_then_succeeds() -> None:
+    awaitable = AsyncMock(side_effect=[_api_error_with_status(502, _PROD_OVERLOADED_MESSAGE), "recovered"])
+
+    result = await invoke_with_transient_retry(awaitable, wall_timeout=_BIG_WALL, label="native_search")
+
+    assert result == "recovered"
+    assert awaitable.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_slow_overloaded_error_is_not_retried() -> None:
+    """The elapsed gate still governs: widening the predicate adds no slow-failure retries."""
+    awaitable = AsyncMock(side_effect=_api_error_with_status(502, _PROD_OVERLOADED_MESSAGE))
+    clock = _fake_clock(0.0, TRANSIENT_RETRY_MAX_ELAPSED_S + 5.0)
+
+    with patch("metaculus_bot.llm_retry.time.monotonic", clock), pytest.raises(litellm_exc.APIError):
+        await invoke_with_transient_retry(awaitable, wall_timeout=_BIG_WALL, label="native_search")
+
+    assert awaitable.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_retry_warning_names_the_error_type_and_status(caplog: pytest.LogCaptureFixture) -> None:
+    awaitable = AsyncMock(side_effect=[_api_error_with_status(502, _PROD_OVERLOADED_MESSAGE), "ok"])
+
+    with caplog.at_level("WARNING", logger="metaculus_bot.llm_retry"):
+        await invoke_with_transient_retry(awaitable, wall_timeout=_BIG_WALL, label="native_search")
+
+    (warning,) = [r.message for r in caplog.records if r.message.startswith("LLM_RETRY[native_search]")]
+    assert "error=APIError status=502" in warning
+
+
+@pytest.mark.asyncio
+async def test_retry_result_type_follows_the_awaitable() -> None:
+    """Generic over the awaited type, so the agentic loop can retry a raw completion object."""
+    completion = {"choices": []}
+    awaitable = AsyncMock(side_effect=[_timeout(), completion])
+
+    result = await invoke_with_transient_retry(awaitable, wall_timeout=_BIG_WALL, label="gap_fill_v2_driver")
+
+    assert result is completion
+
+
+def test_llm_error_fields_reads_type_and_status() -> None:
+    assert llm_error_fields(_api_error_with_status(502)) == "error=APIError status=502"
+    assert llm_error_fields(_timeout()) == "error=Timeout status=408"
+
+
+def test_llm_error_fields_reports_none_outside_the_llm_tree() -> None:
+    """``None`` is the registry's null sentinel, so the status field always parses."""
+    assert llm_error_fields(ValueError("bad")) == "error=ValueError status=None"

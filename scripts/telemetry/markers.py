@@ -681,9 +681,36 @@ MARKER_SPECS: list[MarkerSpec] = [
         # Why: gates the pass; the only durable signal. Receipt: docs/telemetry_markers.md "GAP_FILL_ANALYZER_FAILED".
         re.compile(
             r"GAP_FILL_ANALYZER_FAILED:\s*question=(?P<question>\S+)\s+error=(?P<error>\S+)"
-            r"(?:\s+detail=(?P<detail>.*))?$"
+            r"(?:\s+status=(?P<status>\S+))?(?:\s+detail=(?P<detail>.*))?$"
         ),
         qid_kind=QID_KIND_QUESTION_ID,  # targeted.py passes question.id_of_question
+    ),
+    MarkerSpec(
+        "gap_fill_v1_search_failed",
+        # Why: per-gap error type and status. Receipt: docs/telemetry_markers.md "GAP_FILL_V1_SEARCH_FAILED".
+        re.compile(
+            r"GAP_FILL_V1_SEARCH_FAILED:\s*question=(?P<question>\S+)\s+gap=(?P<gap>\d+)"
+            r"\s+error=(?P<error>\S+)\s+status=(?P<status>\S+)\s+detail=(?P<detail>.*)$"
+        ),
+        qid_kind=QID_KIND_QUESTION_ID,  # targeted.py passes question.id_of_question
+    ),
+    MarkerSpec(
+        "research_provider_failed",
+        # Why: names the error behind errored. Receipt: docs/telemetry_markers.md "RESEARCH_PROVIDER_FAILED".
+        re.compile(
+            r"RESEARCH_PROVIDER_FAILED:\s*question=(?P<question>\S+)\s+provider=(?P<provider>\S+)"
+            r"\s+error=(?P<error>\S+)\s+status=(?P<status>\S+)\s+detail=(?P<detail>.*)$"
+        ),
+        qid_kind=QID_KIND_QUESTION_ID,  # orchestrator.py passes question.id_of_question
+    ),
+    MarkerSpec(
+        "llm_retry",
+        # Why: retries that succeed leave no other trace. Receipt: docs/telemetry_markers.md "LLM_RETRY".
+        re.compile(
+            r"LLM_RETRY\[(?P<label>[^\]]+)\]:\s*(?P<kind>fast retryable|slow zero-output) failure on attempt"
+            r"\s+(?P<attempt>\d+)/(?P<attempts>\d+)\s+\(error=(?P<error>[^\s,]+)\s+status=(?P<status>[^\s,]+),"
+            r"\s+elapsed=(?P<elapsed_s>[\d.]+)s"
+        ),
     ),
     MarkerSpec(
         "gap_fill_v1_triage",

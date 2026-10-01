@@ -13,6 +13,7 @@ from metaculus_bot.fallback_openrouter import (
     should_retry_with_general_key,
     should_route_via_donated_key,
 )
+from metaculus_bot.llm_retry import invoke_with_transient_retry
 from metaculus_bot.research.agentic.types import LoopConfig
 
 
@@ -75,11 +76,11 @@ def build_default_llm_call(config: LoopConfig) -> LlmCall:
             kwargs["api_key"] = api_key
         return await acompletion(**kwargs)
 
-    async def _call(
+    async def _call_routed(
         messages: list[dict[str, Any]],
         tools_json: list[dict[str, Any]] | None,
         *,
-        tool_choice: str | None = None,
+        tool_choice: str | None,
     ) -> Any:
         if use_fallback:
             assert donated_key is not None
@@ -102,5 +103,18 @@ def build_default_llm_call(config: LoopConfig) -> LlmCall:
         # Fallback decision shared with fallback_openrouter; only the transport differs.
         key_alias = DONATED_KEY_ALIAS if use_donated else PERSONAL_KEY_ALIAS
         return await _call_once(messages, tools_json, tool_choice=tool_choice, api_key=api_key, key_alias=key_alias)
+
+    async def _call(
+        messages: list[dict[str, Any]],
+        tools_json: list[dict[str, Any]] | None,
+        *,
+        tool_choice: str | None = None,
+    ) -> Any:
+        # Per-attempt wall is the loop's own deadline: run_agentic_loop's wait_for bounds the retries anyway.
+        return await invoke_with_transient_retry(
+            lambda: _call_routed(messages, tools_json, tool_choice=tool_choice),
+            wall_timeout=config.wall_deadline_s,
+            label=GAP_FILL_V2_DRIVER_ROLE,
+        )
 
     return _call

@@ -30,7 +30,7 @@ from metaculus_bot.constants import (
     GAP_FILL_RESOLVER_REASONING_EFFORT,
     NATIVE_SEARCH_WALL_TIMEOUT,
 )
-from metaculus_bot.llm_retry import invoke_with_broad_retry, invoke_with_transient_retry
+from metaculus_bot.llm_retry import invoke_with_broad_retry, invoke_with_transient_retry, llm_error_fields
 from metaculus_bot.prompts import (
     disagreement_crux_prompt,
     gap_fill_analyzer_prompt,
@@ -393,7 +393,7 @@ async def run_gap_fill_pass(
         gaps = await _run_analyzer(question, first_pass_research, is_benchmarking=is_benchmarking)
     except _GAP_FILL_SOFT_FAIL_EXCEPTIONS as exc:
         # A dead analyzer looks exactly like a question with no gaps. See docs/research.md "v1 implementation notes".
-        logger.warning(f"GAP_FILL_ANALYZER_FAILED: question={qid} error={type(exc).__name__} detail={exc}")
+        logger.warning(f"GAP_FILL_ANALYZER_FAILED: question={qid} {llm_error_fields(exc)} detail={exc}")
         if on_error is not None:
             on_error(exc)
         # A scheduler checkpoint on the no-op path, for ASYNC910. See docs/research.md "v1 implementation notes".
@@ -429,7 +429,7 @@ async def run_gap_fill_pass(
     sections: list[str] = []
     for idx, (gap, res) in enumerate(zip(triage.kept, results, strict=True), start=1):
         if isinstance(res, BaseException):
-            logger.warning(f"GapFill: gap #{idx} search failed ({type(res).__name__}): {res}")
+            logger.warning(f"GAP_FILL_V1_SEARCH_FAILED: question={qid} gap={idx} {llm_error_fields(res)} detail={res}")
             if failure is None:
                 failure = res
             continue

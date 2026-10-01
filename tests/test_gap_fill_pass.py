@@ -560,6 +560,7 @@ async def test_two_gaps_run_in_parallel() -> None:
 
 
 _TRIAGE_SPEC = next(spec for spec in MARKER_SPECS if spec.name == "gap_fill_v1_triage")
+_SEARCH_FAILED_SPEC = next(spec for spec in MARKER_SPECS if spec.name == "gap_fill_v1_search_failed")
 
 
 def _triage_markers(caplog: pytest.LogCaptureFixture) -> list[dict[str, str]]:
@@ -959,12 +960,14 @@ async def test_all_searches_fail_returns_empty(caplog: pytest.LogCaptureFixture)
 
     assert out == ""
 
-    gap_failure_records = [
-        rec for rec in caplog.records if rec.levelno == logging.WARNING and "gap #" in rec.message.lower()
-    ]
-    assert len(gap_failure_records) == len(gaps)
-    assert any("gap #1" in rec.message.lower() for rec in gap_failure_records)
-    assert any("gap #2" in rec.message.lower() for rec in gap_failure_records)
+    failure_lines = [rec.message for rec in caplog.records if rec.message.startswith("GAP_FILL_V1_SEARCH_FAILED:")]
+    parsed = [_SEARCH_FAILED_SPEC.regex.search(line) for line in failure_lines]
+    assert all(parsed), f"a GAP_FILL_V1_SEARCH_FAILED line does not match its MarkerSpec: {failure_lines}"
+    fields = [match.groupdict() for match in parsed if match is not None]
+    assert sorted(f["gap"] for f in fields) == ["1", "2"]
+    assert {(f["question"], f["error"], f["status"]) for f in fields} == {
+        (str(question.id_of_question), "RuntimeError", "None")
+    }
 
 
 @pytest.mark.asyncio
