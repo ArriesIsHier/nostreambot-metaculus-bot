@@ -1,3 +1,43 @@
+# Metaculus forecasting bot (ArriesIsHier fork)
+
+This is [ArriesIsHier](https://github.com/ArriesIsHier)'s fork of
+[No-Stream/nostreambot-metaculus-bot](https://github.com/No-Stream/nostreambot-metaculus-bot)
+(MIT licensed). All of the forecasting pipeline is No-Stream's work; credit for the bot, its
+research stack and its Summer 2026 result (15th of 277) belongs to them. This fork enters the
+**Fall 2026 FutureEval Bot Tournament** (`fall-futureeval-2026`) as an independent bot.
+
+### What this fork changes
+
+- **Keys.** It runs on two secrets only: `METACULUS_TOKEN` (the bot account) and
+  `OAI_ANTH_OPENROUTER_KEY` (the Metaculus-donated OpenRouter key). A personal
+  `OPENROUTER_API_KEY` is optional. No AskNews, Exa, Perplexity, FRED or Google AI Studio key.
+- **Research.** Gemini grounded search, the Gemini `url_context` fetch rung and agentic gap-fill v2
+  switch on only when `GEMINI_API_KEY` (and `exa_key`, for v2) exist as repository secrets, so the
+  workflows degrade cleanly without them. OpenAI native search, gap-fill v1, prediction markets,
+  resolution-source fetching, financial data (keyless paths) and the time-series anchor stay on.
+- **Roster.** The Google slot is `gemini-3.8-flash` (effort high) instead of
+  `gemini-3.1-pro-preview`, which upstream pins to a personal key. OpenAI and Anthropic slots are
+  unchanged (`gpt-6.1-sol`, `claude-opus-5.5`, both xhigh).
+- **Lean mode.** Set the repository *variable* `LEAN_MODE=true` (Settings → Secrets and variables
+  → Actions → Variables) to drop both gap-fill passes and stretch a small credit budget.
+- **Schedules.** Only `run_bot_on_tournament.yaml` runs on a schedule. MiniBench, the Metaculus
+  Cup and Mantic are manual-dispatch only. `scripts/cronjob_dispatch_setup.py` dispatches this
+  fork and enables only the tournament job.
+
+### Setup checklist
+
+1. Enable Actions on the fork (Actions tab).
+2. Add repository secrets `METACULUS_TOKEN` and `OAI_ANTH_OPENROUTER_KEY` (optionally
+   `OPENROUTER_API_KEY`).
+3. Run the one-question smoke test (`test_bot_basic.yaml`, manual dispatch). It spends credits
+   and publishes, so only run it deliberately.
+4. Leave `run_bot_on_tournament.yaml` enabled; it fires hourly and skips questions it has
+   already forecast.
+
+The upstream README follows unchanged.
+
+---
+
 # Metaculus forecasting bot
 
 [

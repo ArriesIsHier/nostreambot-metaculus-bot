@@ -142,7 +142,14 @@ FORECASTER_LLMS: list[GeneralLlm] = [
     # fallback_openrouter (the donated key routes it through a free-tier Google
     # AI Studio BYOK integration with quota 0, so it would 429 there); see the
     # TODO(gemini-3.1-pro-donated) tag pending the Metaculus-side BYOK fix.
-    _forecaster_slot("openrouter/google/gemini-3.1-pro-preview"),
+    # Fork (ArriesIsHier), 2026-10-02: gemini-3.1-pro-preview -> gemini-3.8-flash at effort high.
+    # This deployment has no personal OpenRouter key to serve the pinned pro slot, and the live
+    # OpenRouter model list that day showed no Gemini Pro newer than 3.1-pro-preview (Feb 2026);
+    # 3.8-flash (2026-09-02) is the newest Google model and routes via the donated key.
+    _forecaster_slot(
+        "openrouter/google/gemini-3.8-flash",
+        reasoning={"effort": "high"},
+    ),
 ]
 
 

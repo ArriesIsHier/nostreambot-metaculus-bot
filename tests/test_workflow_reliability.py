@@ -300,10 +300,9 @@ class TestScheduledBotCadence:
         # Derived from the files, then pinned: the two test workflows are dispatch-only
         # (spending is the operator's choice), and a new cron on one of them would show up
         # here rather than silently starting to publish on a schedule.
+        # Fork (ArriesIsHier): only the prize tournament is scheduled; Mantic, the Cup and
+        # MiniBench are dispatch-only until their keys or credit budget exist.
         assert sorted(self.scheduled) == [
-            ".github/workflows/run_bot_on_mantic.yaml",
-            ".github/workflows/run_bot_on_metaculus_cup.yaml",
-            ".github/workflows/run_bot_on_minibench.yaml",
             ".github/workflows/run_bot_on_tournament.yaml",
         ]
 
@@ -350,6 +349,9 @@ class TestScheduledBotCadence:
         (docs/operations.md "Scheduling reliability"). Two crons at :17/:47 would have forfeited
         roughly half of all one-hour questions and given the :47 pickup only the fast path.
         """
+        # The fork runs Mantic dispatch-only; this pin applies again once a schedule returns.
+        if self.mantic_rel_path not in self.scheduled:
+            return
         minutes = sorted(int(cron.split()[0]) for cron in self.scheduled[self.mantic_rel_path])
         last_full_path_minute = (
             self._MANTIC_WINDOW_SECONDS - PUBLISH_RESERVE_SECONDS - TIME_BUDGET_FAST_PATH_THRESHOLD
@@ -427,7 +429,9 @@ class TestPaidUrlContextRungIsArmedInEveryBotWorkflow:
     @pytest.mark.parametrize("rel_path", _BOT_WORKFLOWS)
     def test_the_flag_is_on_in_the_bot_step(self, rel_path: str) -> None:
         env = self._bot_step_env(_workflow(rel_path))
-        assert env.get("RESOLUTION_SOURCE_URL_CONTEXT_ENABLED") == "true", (
+        # Fork (ArriesIsHier): the flag is armed exactly when the GEMINI_API_KEY secret exists.
+        flag = env.get("RESOLUTION_SOURCE_URL_CONTEXT_ENABLED")
+        assert flag in ("true", "${{ secrets.GEMINI_API_KEY != '' && 'true' || 'false' }}"), (
             f"{rel_path} does not set RESOLUTION_SOURCE_URL_CONTEXT_ENABLED: 'true' on its bot step, so "
             "its resolution-source ladder runs without the paid url_context rung the other bot "
             "workflows have on"

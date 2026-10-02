@@ -23,18 +23,7 @@ name: Forecast on Mantic tournament
 
 on:
   workflow_dispatch:
-  schedule:
-    # Three entries, all early in the hour. Mantic questions open on the hour with 60-minute
-    # windows, so a pickup after about :30 gets only the degraded fast path and one in the
-    # last six minutes gets nothing, and GitHub delivers only about a fifth of this
-    # repository's scheduled firings, so one entry is not enough. The minutes sit off every
-    # other bot workflow's entries (a shared minute starts two full runs at once; the pin is
-    # in tests/test_workflow_reliability.py) and off the :00 scheduling burst. The delivery
-    # numbers and the external-dispatcher fix: docs/operations.md "Scheduling reliability".
-    # Make sure to skip already forecasted questions!
-    - cron: "5 * * * *" # every hour at :05
-    - cron: "15 * * * *" # every hour at :15
-    - cron: "25 * * * *" # every hour at :25
+  # Fork (ArriesIsHier): schedule removed. No MANTIC_TOKEN here; dispatch-only.
 
 # Add concurrency group to prevent parallel runs
 concurrency:
@@ -118,6 +107,9 @@ jobs:
         # this reads the environment variables from the github repository.
         # Store under Settings --> Secrets and variables --> Actions
         env:
+          # Fork (ArriesIsHier): Gemini search, the url_context rung and gap-fill v2 switch on only
+          # when their keys exist as secrets (this fork has no Google AI Studio or Exa key).
+          # Repository variable LEAN_MODE=true drops both gap-fill passes to stretch credits.
           # Unbuffered stdout/stderr so log lines stream in real time and nothing
           # is lost if the run crashes before a buffer flush.
           PYTHONUNBUFFERED: '1'
@@ -160,7 +152,7 @@ jobs:
           # in CI as secrets.GEMINI_API_KEY). The grounded-search side has no
           # donated/shared path, because Google AI Studio doesn't offer one.
           GOOGLE_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          GEMINI_SEARCH_ENABLED: 'true'
+          GEMINI_SEARCH_ENABLED: "${{ secrets.GEMINI_API_KEY != '' && 'true' || 'false' }}"
           # OpenRouter Gemini routing (forecaster, stacker, summarizer when the
           # ensemble includes a Google model). The Metaculus workflows set this
           # 'true' so Gemini prefers the donated key; here it is 'false' so every
@@ -169,11 +161,11 @@ jobs:
           GEMINI_USE_DONATED_OPENROUTER_KEY: 'false'
           # Second-pass gap-fill: analyzer identifies gaps in first-pass research,
           # parallel grounded Gemini searches resolve each. Fails soft.
-          GAP_FILL_ENABLED: 'true'
+          GAP_FILL_ENABLED: "${{ vars.LEAN_MODE != 'true' && 'true' || 'false' }}"
           # Agentic gap-fill v2 (bounded research loop; runs concurrently with
           # v1 when both are on). ON since 2026-07-17 after smoke + blind driver
           # eval + Exa confirmation; v1 stays on for an overlap window.
-          GAP_FILL_V2_ENABLED: 'true'
+          GAP_FILL_V2_ENABLED: "${{ secrets.exa_key != '' && secrets.GEMINI_API_KEY != '' && vars.LEAN_MODE != 'true' && 'true' || 'false' }}"
           # Probabilistic tools post-processor: deterministic probability math
           # injected into per-forecaster rationales and the stacker's view.
           # Retired (C2): tier-2 scaffold fields no longer demanded in prompts;
@@ -194,7 +186,7 @@ jobs:
           # GOOGLE_API_KEY above. ON since 2026-09-04. Bounded by the free
           # Google-Extended robots pre-check, the rung's wall-budget floor and
           # RESOLUTION_SOURCE_URL_CONTEXT_MAX_ATTEMPTS paid reads per question.
-          RESOLUTION_SOURCE_URL_CONTEXT_ENABLED: 'true'
+          RESOLUTION_SOURCE_URL_CONTEXT_ENABLED: "${{ secrets.GEMINI_API_KEY != '' && 'true' || 'false' }}"
           # Time-series anchor: deterministic empirical P10/P50/P90 band from a
           # question's own resolution series (FRED/yfinance). Text anchor ON since
           # 2026-07-17 (post smoke validation; see FUTURE.md "Time-series anchor").
