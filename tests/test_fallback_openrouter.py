@@ -1871,12 +1871,32 @@ class TestFreeTierMode:
         monkeypatch.setenv("OPENROUTER_API_KEY", "paid-key")
         kwargs = _free_model_kwargs("openrouter/nvidia/nemotron-3-ultra-550b-a55b:free", {"max_tokens": 64_000})
         assert kwargs["api_key"] == "free-key"
-        assert "api_key" not in _free_model_kwargs("sambanova/DeepSeek-V3.2", {})
+        assert "api_key" not in _free_model_kwargs("cerebras/gpt-oss-120b", {})
 
     def test_utility_chain_spares_the_daily_capped_providers(self):
         from metaculus_bot.constants import FREE_UTILITY_CHAIN
 
-        assert not [model for model in FREE_UTILITY_CHAIN if model.split("/", 1)[0] in ("sambanova", "openrouter")]
+        assert not [model for model in FREE_UTILITY_CHAIN if model.startswith("openrouter/")]
+
+    def test_forecasters_get_the_larger_output_cap_and_every_model_a_bounded_timeout(self, monkeypatch):
+        from metaculus_bot.constants import (
+            FREE_FORECASTER_NON_GEMINI_MAX_TOKENS,
+            FREE_MODEL_TIMEOUT_S,
+            FREE_NON_GEMINI_MAX_TOKENS,
+        )
+        from metaculus_bot.fallback_openrouter import build_llm_with_openrouter_fallback
+
+        monkeypatch.setenv("FREE_GEMINI_MODE", "true")
+        self._keys(monkeypatch, "CEREBRAS_API_KEY")
+        forecaster = build_llm_with_openrouter_fallback(
+            "openrouter/openai/anything", role="forecaster:openai", max_tokens=64_000, timeout=480
+        )
+        utility = build_llm_with_openrouter_fallback(
+            "openrouter/openai/anything", role="market_ranker", max_tokens=32_000, timeout=480
+        )
+        assert forecaster.litellm_kwargs["max_tokens"] == FREE_FORECASTER_NON_GEMINI_MAX_TOKENS
+        assert utility.litellm_kwargs["max_tokens"] == FREE_NON_GEMINI_MAX_TOKENS
+        assert forecaster.litellm_kwargs["timeout"] == utility.litellm_kwargs["timeout"] == FREE_MODEL_TIMEOUT_S
 
     @pytest.mark.asyncio
     async def test_a_failing_head_falls_back_down_the_chain(self, monkeypatch):

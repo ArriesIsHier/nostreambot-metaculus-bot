@@ -13,7 +13,9 @@ from metaculus_bot.constants import (
     FREE_CHAIN_PASSES,
     FREE_CHAIN_RETRY_PAUSE_S,
     FREE_ERROR_BRIEF_CHARS,
+    FREE_FORECASTER_NON_GEMINI_MAX_TOKENS,
     FREE_MODEL_EXTRA_KWARGS,
+    FREE_MODEL_TIMEOUT_S,
     FREE_NON_GEMINI_MAX_TOKENS,
     FREE_PROVIDER_KEY_ENVS,
     FREE_TIER_FORECASTER_MODELS,
@@ -530,15 +532,19 @@ def available_free_models(chain: tuple[str, ...]) -> list[str]:
     return available or list(chain)
 
 
-def _free_model_kwargs(model: str, kwargs: dict[str, Any]) -> dict[str, Any]:
-    """Per-model request kwargs: OpenRouter-only knobs dropped, non-Gemini output capped.
+def _free_model_kwargs(
+    model: str, kwargs: dict[str, Any], max_tokens_cap: int = FREE_NON_GEMINI_MAX_TOKENS
+) -> dict[str, Any]:
+    """Per-model request kwargs: OpenRouter-only knobs dropped, non-Gemini output capped, timeout bounded.
 
     An ``openrouter/`` model gets the free key explicitly: litellm would otherwise read
     ``OPENROUTER_API_KEY``, the name that switches the paid pipeline on.
     """
     model_kwargs = {key: value for key, value in kwargs.items() if key not in _OPENROUTER_ONLY_KWARGS}
     if not model.startswith("gemini/") and "max_tokens" in model_kwargs:
-        model_kwargs["max_tokens"] = min(model_kwargs["max_tokens"], FREE_NON_GEMINI_MAX_TOKENS)
+        model_kwargs["max_tokens"] = min(model_kwargs["max_tokens"], max_tokens_cap)
+    if "timeout" in model_kwargs:
+        model_kwargs["timeout"] = min(model_kwargs["timeout"], FREE_MODEL_TIMEOUT_S)
     model_kwargs.update(FREE_MODEL_EXTRA_KWARGS.get(model, {}))
     if model.startswith("openrouter/"):
         model_kwargs["api_key"] = os.getenv(OPENROUTER_FREE_KEY_ENV)
@@ -562,12 +568,20 @@ class FreeTierChainLlm(GeneralLlm):
     chain's head, so roster labels name the preferred model; a run's log names which one served.
     """
 
-    def __init__(self, *, models: list[str], role: str | None = None, **kwargs: Any) -> None:
+    def __init__(
+        self,
+        *,
+        models: list[str],
+        role: str | None = None,
+        max_tokens_cap: int = FREE_NON_GEMINI_MAX_TOKENS,
+        **kwargs: Any,
+    ) -> None:
         head, *rest = models
         metadata = llm_call_metadata(role, DIRECT_KEY_ALIAS)
-        super().__init__(model=head, metadata=metadata, **_free_model_kwargs(head, kwargs))
+        super().__init__(model=head, metadata=metadata, **_free_model_kwargs(head, kwargs, max_tokens_cap))
         self._fallback_llms: list[GeneralLlm] = [
-            GeneralLlm(model=model, metadata=metadata, **_free_model_kwargs(model, kwargs)) for model in rest
+            GeneralLlm(model=model, metadata=metadata, **_free_model_kwargs(model, kwargs, max_tokens_cap))
+            for model in rest
         ]
 
     async def invoke(self, prompt: Any, system_prompt: str | None = None) -> str:  # type: ignore[override]
@@ -598,7 +612,7 @@ class FreeTierChainLlm(GeneralLlm):
 
 
 def disable_openai_sdk_retries() -> None:
-    """Make the OpenAI-compatible free providers (Cerebras, SambaNova) fail a 429 at once.
+    """Make the OpenAI-compatible free providers (Cerebras) fail a 429 at once.
 
     litellm sends them through the OpenAI SDK, which retries twice and sleeps for the server's
     Retry-After each time. Cerebras sets that to 60 s, so a busy Cerebras held a chain for two
@@ -628,7 +642,10 @@ def build_free_tier_llm(*, role: str | None = None, **kwargs: Any) -> GeneralLlm
     """
     vendor = role.split(":", 1)[1] if role and role.startswith("forecaster:") else ""
     if vendor in FREE_TIER_FORECASTER_SLOTS:
-        models = free_forecaster_chain(FREE_TIER_FORECASTER_SLOTS[vendor])
-    else:
-        models = available_free_models(FREE_UTILITY_CHAIN)
-    return FreeTierChainLlm(models=models, role=role, **kwargs)
+        return FreeTierChainLlm(
+            models=free_forecaster_chain(FREE_TIER_FORECASTER_SLOTS[vendor]),
+            role=role,
+            max_tokens_cap=FREE_FORECASTER_NON_GEMINI_MAX_TOKENS,
+            **kwargs,
+        )
+    return FreeTierChainLlm(models=available_free_models(FREE_UTILITY_CHAIN), role=role, **kwargs)

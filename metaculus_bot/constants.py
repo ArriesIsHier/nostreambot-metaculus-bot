@@ -557,27 +557,25 @@ GEMINI_SEARCH_DEFAULT_MODEL: str = "gemini-3.8-flash"
 # answer 404 "no longer available to new users", and the free 3.x Flash models answer 503 "high
 # demand" at peak, which is why every slot is a CHAIN across providers rather than one model.
 # Groq and Cerebras ids read from their model docs on 2026-10-08. Optional providers, each used only
-# when its key is set, read the same day: SambaNova's free tier (docs.sambanova.ai rate limits: 20
-# requests a day per model, 200k tokens a day), OpenRouter's ":free" models (live
+# when its key is set, read the same day: OpenRouter's ":free" models (live
 # openrouter.ai/api/v1/models list; 50 requests a day on an account with no credit, under a SEPARATE
 # key name so it never switches the paid pipeline on), and Mistral through its "-latest" aliases.
 # Mistral's console showed on 2026-10-08 that API keys activate only on a paid plan, so this
-# deployment leaves MISTRAL_API_KEY unset.
+# deployment leaves MISTRAL_API_KEY unset. SambaNova was tried and dropped the same day: its "free"
+# key answered "A payment method is required" and held one DeepSeek call for the full 480 s timeout.
 FREE_GEMINI_MODE_ENV: str = "FREE_GEMINI_MODE"
 GEMINI_API_KEY_ENV: str = "GEMINI_API_KEY"
 GROQ_API_KEY_ENV: str = "GROQ_API_KEY"
 CEREBRAS_API_KEY_ENV: str = "CEREBRAS_API_KEY"
 MISTRAL_API_KEY_ENV: str = "MISTRAL_API_KEY"
-SAMBANOVA_API_KEY_ENV: str = "SAMBANOVA_API_KEY"
 OPENROUTER_FREE_KEY_ENV: str = "OPENROUTER_FREE_KEY"
-# litellm provider prefix -> the env var holding that provider's key. litellm reads the first five
+# litellm provider prefix -> the env var holding that provider's key. litellm reads the first four
 # from the environment itself; the OpenRouter one is passed explicitly (fallback_openrouter).
 FREE_PROVIDER_KEY_ENVS: dict[str, str] = {
     "gemini": GEMINI_API_KEY_ENV,
     "groq": GROQ_API_KEY_ENV,
     "cerebras": CEREBRAS_API_KEY_ENV,
     "mistral": MISTRAL_API_KEY_ENV,
-    "sambanova": SAMBANOVA_API_KEY_ENV,
     "openrouter": OPENROUTER_FREE_KEY_ENV,
 }
 # Forecaster models, strongest first, providers interleaved so a failing provider's next model is
@@ -587,13 +585,11 @@ FREE_PROVIDER_KEY_ENVS: dict[str, str] = {
 # tokens per minute (about 8k on gpt-oss), below one forecaster prompt plus its output.
 FREE_TIER_FORECASTER_MODELS: tuple[str, ...] = (
     "gemini/gemini-3.8-flash",
-    "sambanova/DeepSeek-V3.2",
     "openrouter/nvidia/nemotron-3-ultra-550b-a55b:free",
     "cerebras/gpt-oss-120b",
     "mistral/mistral-large-latest",
     "cerebras/qwen-3.8-27b",
     "gemini/gemini-3.7-flash",
-    "sambanova/DeepSeek-V3.1",
     "mistral/mistral-medium-latest",
     "gemini/gemini-3.6-flash",
     "groq/openai/gpt-oss-120b",
@@ -602,7 +598,7 @@ FREE_TIER_FORECASTER_MODELS: tuple[str, ...] = (
 FREE_TIER_FORECASTER_SLOTS: dict[str, int] = {"openai": 0, "anthropic": 1, "google": 2}
 # Parser, market ranker (prompts up to ~35k tokens), page digest, classifiers: Gemini first for
 # its 1M context, the other providers only as a last resort.
-# SambaNova and OpenRouter's daily request caps are kept for the forecasters.
+# OpenRouter's daily request cap is kept for the forecasters.
 FREE_UTILITY_CHAIN: tuple[str, ...] = (
     "gemini/gemini-3.5-flash-lite",
     "cerebras/gpt-oss-120b",
@@ -616,8 +612,15 @@ FREE_CHAIN_RETRY_PAUSE_S: float = 20.0
 FREE_CHAIN_PASSES: int = 2
 # FREE_TIER_FALLBACK logs this much of a failed call's error message.
 FREE_ERROR_BRIEF_CHARS: int = 200
-# Cerebras' free tier caps context at 65k tokens in total, so non-Gemini outputs are capped.
+# Cerebras' free tier caps context at 65k tokens in total, so non-Gemini outputs are capped. Utility
+# prompts reach ~42k tokens (market ranker), so they keep 16k; forecaster prompts stay under ~9k, and
+# every Cerebras forecaster call on Q14333 spent exactly 16k on reasoning and answered nothing
+# (2026-10-08 run 37821789762), so forecasters get 32k.
 FREE_NON_GEMINI_MAX_TOKENS: int = 16_000
+FREE_FORECASTER_NON_GEMINI_MAX_TOKENS: int = 32_000
+# Per-model timeout inside a chain. The roster's 480 s let one hung call (SambaNova, 2026-10-08) eat
+# most of FORECASTER_SOFT_DEADLINE (600 s); 240 s leaves time for the next model.
+FREE_MODEL_TIMEOUT_S: float = 240.0
 # Explicit reasoning efforts; the Gemini models run at their default thinking. Qwen 3.8 defaults
 # to high, whose reasoning counts against the output cap and used all 16k of it before writing an
 # answer (empty content on every Q14333 call, 2026-10-08), so it runs at medium.
