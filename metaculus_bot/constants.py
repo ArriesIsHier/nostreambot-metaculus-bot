@@ -560,8 +560,9 @@ GEMINI_SEARCH_DEFAULT_MODEL: str = "gemini-3.8-flash"
 # when its key is set, read the same day: SambaNova's free tier (docs.sambanova.ai rate limits: 20
 # requests a day per model, 200k tokens a day), OpenRouter's ":free" models (live
 # openrouter.ai/api/v1/models list; 50 requests a day on an account with no credit, under a SEPARATE
-# key name so it never switches the paid pipeline on), and Mistral's free Experiment plan, addressed
-# through its "-latest" aliases.
+# key name so it never switches the paid pipeline on), and Mistral through its "-latest" aliases.
+# Mistral's console showed on 2026-10-08 that API keys activate only on a paid plan, so this
+# deployment leaves MISTRAL_API_KEY unset.
 FREE_GEMINI_MODE_ENV: str = "FREE_GEMINI_MODE"
 GEMINI_API_KEY_ENV: str = "GEMINI_API_KEY"
 GROQ_API_KEY_ENV: str = "GROQ_API_KEY"

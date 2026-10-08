@@ -4,6 +4,7 @@ import os
 import sys
 from typing import Any
 
+import litellm
 import litellm.exceptions
 from forecasting_tools import GeneralLlm
 
@@ -545,9 +546,12 @@ def _free_model_kwargs(model: str, kwargs: dict[str, Any]) -> dict[str, Any]:
 
 
 def _error_brief(error: Exception) -> str:
-    """The first line of ``error``'s message, short enough for one log line."""
-    text = str(error).strip()
-    return (text.splitlines()[0] if text else "")[:FREE_ERROR_BRIEF_CHARS]
+    """``error``'s message on one line, short enough for a log line.
+
+    Whitespace is collapsed rather than the first line kept: Gemini's message is a JSON body whose
+    first line is a lone ``{``.
+    """
+    return " ".join(str(error).split())[:FREE_ERROR_BRIEF_CHARS]
 
 
 class FreeTierChainLlm(GeneralLlm):
@@ -591,6 +595,18 @@ class FreeTierChainLlm(GeneralLlm):
                 await asyncio.sleep(FREE_CHAIN_RETRY_PAUSE_S)
         assert last_error is not None
         raise last_error
+
+
+def disable_openai_sdk_retries() -> None:
+    """Make the OpenAI-compatible free providers (Cerebras, SambaNova) fail a 429 at once.
+
+    litellm sends them through the OpenAI SDK, which retries twice and sleeps for the server's
+    Retry-After each time. Cerebras sets that to 60 s, so a busy Cerebras held a chain for two
+    minutes before it could move on, long enough to time out the market ranker on Q14333
+    (2026-10-08). litellm drops a per-call ``max_retries`` for these providers but reads one from
+    ``OpenAIConfig``. Process-global, so the CLI calls it at startup in free mode only.
+    """
+    litellm.OpenAIConfig.max_retries = 0  # pyright: ignore[reportAttributeAccessIssue]  # read back through OpenAIConfig.get_config()
 
 
 def free_forecaster_chain(slot: int) -> list[str]:

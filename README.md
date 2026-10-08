@@ -21,7 +21,8 @@ research stack and its Summer 2026 result (15th of 277) belongs to them. This fo
 - **Free mode.** With no OpenRouter key and at least one free-tier key, every model call runs on
   free API tiers (`FREE_GEMINI_MODE`). Each provider joins when its repository secret is set:
   `GEMINI_API_KEY` (Google AI Studio), `CEREBRAS_API_KEY`, `GROQ_API_KEY`, `MISTRAL_API_KEY`
-  (free Experiment plan), `SAMBANOVA_API_KEY` (DeepSeek, 20 requests a day per model) and
+  (Mistral activates keys only on a paid plan, as of 2026-10-08), `SAMBANOVA_API_KEY` (DeepSeek,
+  20 requests a day per model) and
   `OPENROUTER_FREE_KEY` (OpenRouter `:free` models; a separate name, so it never switches the paid
   pipeline on). The three forecasters start on three different models from
   `FREE_TIER_FORECASTER_MODELS` and fall back through the rest when one is overloaded or rate

@@ -41,6 +41,7 @@ from metaculus_bot.credit_telemetry import (
 )
 from metaculus_bot.fallback_openrouter import (
     check_deprecation_alerts_and_exit,
+    disable_openai_sdk_retries,
     get_credit_key_fallback_count,
     get_donated_404_fallback_count,
     get_generic_key_fallback_count,
@@ -127,6 +128,10 @@ def _configure_process(run_mode: RunMode) -> None:
 
     # One transient 403/429/5xx would otherwise kill the run. See docs/architecture.md "CLI startup wiring".
     apply_fetch_hardening()
+
+    # Free mode: a busy provider must hand the call straight to the next model in its chain.
+    if free_gemini_mode():
+        disable_openai_sdk_retries()
 
     # Reset here, not in forecast_questions: that fetch runs first. See docs/architecture.md "CLI startup wiring".
     reset_post_drop_count()

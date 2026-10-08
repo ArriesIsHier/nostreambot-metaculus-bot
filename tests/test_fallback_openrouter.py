@@ -1930,15 +1930,25 @@ class TestFreeTierMode:
 
         async def fake_invoke(self, prompt, system_prompt=None):
             if self.model == "gemini/gemini-a":
-                raise RuntimeError("503 high demand\nsecond line")
+                raise RuntimeError('GeminiException - {\n  "error": {\n    "code": 503,' + " x" * 200)
             return "answer"
 
         monkeypatch.setattr(GeneralLlm, "invoke", fake_invoke)
         llm = FreeTierChainLlm(models=["gemini/gemini-a", "gemini/gemini-b"], role="parser")
         with caplog.at_level("WARNING", logger="metaculus_bot.fallback_openrouter"):
             assert await llm.invoke("q") == "answer"
-        assert "FREE_TIER_FALLBACK: model=gemini/gemini-a failed (RuntimeError) 503 high demand" in caplog.text
-        assert "second line" not in caplog.text
+        assert 'failed (RuntimeError) GeminiException - { "error": { "code": 503, x x' in caplog.text
+        assert " x" * 100 not in caplog.text
+
+    def test_openai_sdk_retries_can_be_switched_off(self, monkeypatch):
+        import litellm
+
+        from metaculus_bot.fallback_openrouter import disable_openai_sdk_retries
+
+        # Registered first so teardown restores the class to its original state.
+        monkeypatch.setattr(litellm.OpenAIConfig, "max_retries", None, raising=False)
+        disable_openai_sdk_retries()
+        assert litellm.OpenAIConfig.get_config()["max_retries"] == 0
 
     def test_every_chain_model_names_a_known_free_provider(self):
         from metaculus_bot.constants import FREE_PROVIDER_KEY_ENVS, FREE_TIER_FORECASTER_MODELS, FREE_UTILITY_CHAIN

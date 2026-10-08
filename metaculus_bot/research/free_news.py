@@ -66,6 +66,10 @@ TAVILY_SEARCH_URL = "https://api.tavily.com/search"
 GDELT_MIN_INTERVAL_S = 5.5
 GDELT_ATTEMPTS = 2
 GDELT_RETRY_BACKOFF_S = 6.0
+# After a query's every attempt is refused, GDELT is limiting this runner's shared IP: skip it this
+# long rather than spend ~12 s on each remaining query (all six attempts on Q14333 answered 429,
+# 2026-10-08, costing about 70 s of research time).
+GDELT_COOLDOWN_S = 300.0
 
 _SPACE_RE = re.compile(r"\s+")
 # Question-shaped words that only dilute a news query.
@@ -234,12 +238,22 @@ class _GdeltPacer:
         self._lock: asyncio.Lock | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
         self._last_request = 0.0
+        self._blocked_until = 0.0
 
     def lock(self) -> asyncio.Lock:
         loop = asyncio.get_running_loop()
         if self._lock is None or self._loop is not loop:
-            self._lock, self._loop, self._last_request = asyncio.Lock(), loop, 0.0
+            self._lock, self._loop, self._last_request, self._blocked_until = asyncio.Lock(), loop, 0.0, 0.0
         return self._lock
+
+    def blocked(self) -> bool:
+        loop = asyncio.get_running_loop()
+        return self._loop is loop and loop.time() < self._blocked_until
+
+    def block(self, seconds: float) -> None:
+        loop = asyncio.get_running_loop()
+        if self._loop is loop:
+            self._blocked_until = loop.time() + seconds
 
     async def wait_turn(self) -> None:
         loop = asyncio.get_running_loop()
@@ -257,6 +271,8 @@ async def search_gdelt(session: aiohttp.ClientSession, query: str) -> list[NewsI
     url = GDELT_DOC_URL.format(query=quote(query), limit=FREE_NEWS_GDELT_MAX_RECORDS, timespan=FREE_NEWS_GDELT_TIMESPAN)
     for attempt in range(1, GDELT_ATTEMPTS + 1):
         async with _GDELT_PACER.lock():
+            if _GDELT_PACER.blocked():
+                return []
             await _GDELT_PACER.wait_turn()
             text = await _get_text(session, url, FREE_NEWS_MAX_FEED_BYTES)
         if text:
@@ -270,6 +286,8 @@ async def search_gdelt(session: aiohttp.ClientSession, query: str) -> list[NewsI
         if attempt < GDELT_ATTEMPTS:
             # A shared runner IP can trip GDELT's per-client limit; one paced retry usually clears it.
             await asyncio.sleep(GDELT_RETRY_BACKOFF_S)
+    _GDELT_PACER.block(GDELT_COOLDOWN_S)
+    logger.info("FREE_NEWS: GDELT refused every attempt; skipping it for %.0f s", GDELT_COOLDOWN_S)
     return []
 
 
