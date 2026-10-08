@@ -162,3 +162,22 @@ class TestGdeltRetry:
         monkeypatch.setattr(fn, "GDELT_MIN_INTERVAL_S", 0.0)
         assert await fn.search_gdelt(session=None, query="q") == []  # type: ignore[arg-type]
         assert len(calls) == 1
+
+    @pytest.mark.asyncio
+    async def test_a_query_refused_on_every_attempt_rests_gdelt_for_the_next_ones(self, monkeypatch):
+        calls = []
+
+        async def fake_get_text(session, url, max_bytes):
+            calls.append(url)
+            return
+
+        async def no_sleep(_seconds):
+            return None
+
+        monkeypatch.setattr(fn, "_get_text", fake_get_text)
+        monkeypatch.setattr(fn, "GDELT_MIN_INTERVAL_S", 0.0)
+        monkeypatch.setattr(fn.asyncio, "sleep", no_sleep)
+        assert await fn.search_gdelt(session=None, query="first") == []  # type: ignore[arg-type]
+        assert len(calls) == fn.GDELT_ATTEMPTS
+        assert await fn.search_gdelt(session=None, query="second") == []  # type: ignore[arg-type]
+        assert len(calls) == fn.GDELT_ATTEMPTS
