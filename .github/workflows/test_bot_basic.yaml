@@ -102,8 +102,8 @@ jobs:
           # Q14333 "Age of Oldest Human as of 2100" (plain-continuous numeric).
           # Unset, main.py would run the full evergreen EXAMPLE_QUESTIONS set.
           TEST_QUESTIONS_OVERRIDE: 'https://www.metaculus.com/questions/14333/age-of-oldest-human-as-of-2100/'
-          # Fork (ArriesIsHier): Gemini search, the url_context rung and gap-fill v2 switch on only
-          # when their keys exist as secrets (this fork runs on METACULUS_TOKEN + the donated key).
+          # Fork (ArriesIsHier): OpenAI native search and gap-fill v1 need an OpenRouter key; Gemini
+          # grounded search runs only in free mode (2.5 Flash, free tier); gap-fill v2 needs exa_key too.
           # Repository variable LEAN_MODE=true drops both gap-fill passes to stretch credits.
           # Unbuffered stdout/stderr so log lines stream in real time and nothing
           # is lost if the run crashes before a buffer flush.
@@ -130,7 +130,7 @@ jobs:
           DISABLE_AIOHTTP_TRANSPORT: 'true'
           # Native search runs in parallel with AskNews; model defaults to
           # openai/gpt-6.1-sol (low effort, verbosity=low, 360s) per constants.py.
-          NATIVE_SEARCH_ENABLED: 'true'
+          NATIVE_SEARCH_ENABLED: "${{ (secrets.OAI_ANTH_OPENROUTER_KEY != '' || secrets.OPENROUTER_API_KEY != '') && 'true' || 'false' }}"
           FINANCIAL_DATA_ENABLED: 'true'
           FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
           # Gemini grounded search (Google AI Studio SDK) adds a 3rd distinct source.
@@ -138,7 +138,11 @@ jobs:
           # in CI as secrets.GEMINI_API_KEY). The grounded-search side has no
           # donated/shared path — Google AI Studio doesn't offer one.
           GOOGLE_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          GEMINI_SEARCH_ENABLED: "${{ secrets.GEMINI_API_KEY != '' && 'true' || 'false' }}"
+          # Fork: with no OpenRouter key, every LLM role runs on the free Google AI Studio tier
+          # (constants.free_gemini_mode); litellm's gemini/ provider reads GEMINI_API_KEY.
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          FREE_GEMINI_MODE: "${{ secrets.OAI_ANTH_OPENROUTER_KEY == '' && secrets.OPENROUTER_API_KEY == '' && secrets.GEMINI_API_KEY != '' && 'true' || 'false' }}"
+          GEMINI_SEARCH_ENABLED: "${{ secrets.OAI_ANTH_OPENROUTER_KEY == '' && secrets.OPENROUTER_API_KEY == '' && secrets.GEMINI_API_KEY != '' && 'true' || 'false' }}"
           # OpenRouter Gemini routing (forecaster, stacker, summarizer when the
           # ensemble includes a Google model). When 'true' (default since
           # 2026-06-16), Gemini OpenRouter calls prefer the Metaculus-donated
@@ -150,7 +154,7 @@ jobs:
           GEMINI_USE_DONATED_OPENROUTER_KEY: 'true'
           # Second-pass gap-fill: analyzer identifies gaps in first-pass research,
           # parallel grounded Gemini searches resolve each. Fails soft.
-          GAP_FILL_ENABLED: "${{ vars.LEAN_MODE != 'true' && 'true' || 'false' }}"
+          GAP_FILL_ENABLED: "${{ vars.LEAN_MODE != 'true' && (secrets.OAI_ANTH_OPENROUTER_KEY != '' || secrets.OPENROUTER_API_KEY != '') && 'true' || 'false' }}"
           # Agentic gap-fill v2 (bounded research loop; runs concurrently with
           # v1 when both are on). ON since 2026-07-17 after smoke + blind driver
           # eval + Exa confirmation; v1 stays on for an overlap window.
@@ -167,7 +171,7 @@ jobs:
           # GOOGLE_API_KEY above. ON since 2026-09-04. Bounded by the free
           # Google-Extended robots pre-check, the rung's wall-budget floor and
           # RESOLUTION_SOURCE_URL_CONTEXT_MAX_ATTEMPTS paid reads per question.
-          RESOLUTION_SOURCE_URL_CONTEXT_ENABLED: "${{ secrets.GEMINI_API_KEY != '' && 'true' || 'false' }}"
+          RESOLUTION_SOURCE_URL_CONTEXT_ENABLED: 'false'
           # Time-series anchor: deterministic empirical P10/P50/P90 band from a
           # question's own resolution series (FRED/yfinance). Text anchor ON since
           # 2026-07-17 (post smoke validation; see FUTURE.md "Time-series anchor").

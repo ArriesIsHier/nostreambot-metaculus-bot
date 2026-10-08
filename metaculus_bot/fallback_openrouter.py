@@ -9,13 +9,17 @@ from forecasting_tools import GeneralLlm
 
 from metaculus_bot.constants import (
     CREDIT_ALERT_RESUME_DATE,
+    FREE_GEMINI_FORECASTER_MODELS,
+    FREE_GEMINI_UTILITY_MODEL,
     OAI_ANTH_OPENROUTER_KEY_ENV,
     OPENROUTER_API_KEY_ENV,
     credit_alerts_active,
     donated_openrouter_key_enabled,
+    free_gemini_mode,
     gemini_use_donated_openrouter_key,
 )
 from metaculus_bot.credit_telemetry import (
+    DIRECT_KEY_ALIAS,
     DONATED_KEY_ALIAS,
     DONATED_KEY_PROBE_TIMEOUT_S,
     PERSONAL_KEY_ALIAS,
@@ -476,6 +480,8 @@ def build_llm_with_openrouter_fallback(model: str, *, role: str | None = None, *
     ``CREDIT_ROLE_SPEND`` ledger (``credit_telemetry.llm_call_metadata`` lists the roles in
     use). Pass it at every production call site; a missing role books as ``untagged``.
     """
+    if free_gemini_mode():
+        return build_free_gemini_llm(role=role, **kwargs)
     if should_route_via_donated_key(model):
         special_key = os.getenv(OAI_ANTH_OPENROUTER_KEY_ENV)
         general_key = os.getenv(OPENROUTER_API_KEY_ENV)
@@ -497,3 +503,22 @@ def build_llm_with_openrouter_fallback(model: str, *, role: str | None = None, *
 
     # Every other slug: keyless, so litellm reads OPENROUTER_API_KEY from the environment.
     return GeneralLlm(model=model, metadata=llm_call_metadata(role, plain_llm_key_alias(model)), **kwargs)
+
+
+# OpenRouter-only request knobs. The Gemini API rejects unknown fields, and the free models run
+# fine at their default thinking, so these are dropped rather than translated.
+_OPENROUTER_ONLY_KWARGS: tuple[str, ...] = ("reasoning", "reasoning_effort", "extra_body")
+
+
+def build_free_gemini_llm(*, role: str | None = None, **kwargs: Any) -> GeneralLlm:
+    """A ``GeneralLlm`` on the Google AI Studio free tier, chosen by role rather than by model.
+
+    A roster slot (``forecaster:<vendor>``) gets that vendor's entry in
+    ``FREE_GEMINI_FORECASTER_MODELS``; every other role gets ``FREE_GEMINI_UTILITY_MODEL``.
+    litellm reads ``GEMINI_API_KEY`` from the environment for ``gemini/`` slugs.
+    """
+    vendor = role.split(":", 1)[1] if role and role.startswith("forecaster:") else ""
+    model = FREE_GEMINI_FORECASTER_MODELS.get(vendor, FREE_GEMINI_UTILITY_MODEL)
+    for key in _OPENROUTER_ONLY_KWARGS:
+        kwargs.pop(key, None)
+    return GeneralLlm(model=model, metadata=llm_call_metadata(role, DIRECT_KEY_ALIAS), **kwargs)
