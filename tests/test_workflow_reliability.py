@@ -300,9 +300,10 @@ class TestScheduledBotCadence:
         # Derived from the files, then pinned: the two test workflows are dispatch-only
         # (spending is the operator's choice), and a new cron on one of them would show up
         # here rather than silently starting to publish on a schedule.
-        # Fork (ArriesIsHier): only the prize tournament is scheduled; Mantic, the Cup and
-        # MiniBench are dispatch-only until their keys or credit budget exist.
+        # Fork (ArriesIsHier): the two prize-paying bot tournaments are scheduled; Mantic and
+        # the Cup are dispatch-only.
         assert sorted(self.scheduled) == [
+            ".github/workflows/run_bot_on_minibench.yaml",
             ".github/workflows/run_bot_on_tournament.yaml",
         ]
 

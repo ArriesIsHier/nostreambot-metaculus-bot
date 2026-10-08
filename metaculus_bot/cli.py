@@ -12,7 +12,9 @@ from metaculus_bot.aggregation_strategies import AggregationStrategy
 from metaculus_bot.api_preflight import verify_api_identity, verify_metaculus_api_identity
 from metaculus_bot.constants import (
     CREDIT_ALERT_RESUME_DATE,
+    DEFAULT_MAX_CONCURRENT_RESEARCH,
     DONATED_OPENROUTER_KEY_ENABLED_ENV,
+    FREE_MODE_MAX_CONCURRENT_RESEARCH,
     MANTIC_API_BASE_URL,
     MANTIC_TOURNAMENT_END_DATE,
     MANTIC_TOURNAMENT_ID,
@@ -27,6 +29,7 @@ from metaculus_bot.constants import (
     credit_alerts_active,
     donated_openrouter_key_enabled,
     env_flag_enabled,
+    free_gemini_mode,
 )
 from metaculus_bot.credit_telemetry import (
     CreditTelemetry,
@@ -427,6 +430,9 @@ def main() -> None:
         research_sink=research_sink,
         llms=llms,
         metaculus_client=metaculus_client,
+        max_concurrent_research=FREE_MODE_MAX_CONCURRENT_RESEARCH
+        if free_gemini_mode()
+        else DEFAULT_MAX_CONCURRENT_RESEARCH,
     )
 
     # Installed before the first completion. See docs/operations.md "Credit telemetry and the refill floor".

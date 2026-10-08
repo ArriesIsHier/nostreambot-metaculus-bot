@@ -33,6 +33,7 @@ from metaculus_bot.constants import (
     DEFAULT_MAX_CONCURRENT_RESEARCH,
     EXA_API_KEY_ENV,
     FINANCIAL_DATA_ENABLED_ENV,
+    FREE_NEWS_ENABLED_ENV,
     GEMINI_SEARCH_ENABLED_ENV,
     GEMINI_SEARCH_MODEL_ENV,
     NATIVE_SEARCH_ENABLED_ENV,
@@ -279,6 +280,13 @@ class ResearchOrchestrator:
                     "gemini_search",
                 )
             )
+
+        if env_flag_enabled(FREE_NEWS_ENABLED_ENV):
+            from metaculus_bot.research.free_news import (  # noqa: PLC0415  # HARNESS-SCAN-EXEMPT-function-level-import  # gated trafilatura/aiohttp provider
+                free_news_provider,
+            )
+
+            providers.append((free_news_provider(is_benchmarking=self._is_benchmarking), "free_news"))
 
         if env_flag_enabled(FINANCIAL_DATA_ENABLED_ENV):
             from metaculus_bot.research.financial_data import (  # noqa: PLC0415  # HARNESS-SCAN-EXEMPT-function-level-import  # gated pandas/yfinance/fredapi provider
