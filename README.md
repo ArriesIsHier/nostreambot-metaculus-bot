@@ -18,6 +18,11 @@ research stack and its Summer 2026 result (15th of 277) belongs to them. This fo
 - **Roster.** The Google slot is `gemini-3.8-flash` (effort high) instead of
   `gemini-3.1-pro-preview`, which upstream pins to a personal key. OpenAI and Anthropic slots are
   unchanged (`gpt-6.1-sol`, `claude-opus-5.5`, both xhigh).
+- **Free mode.** With no OpenRouter key and a free Google AI Studio key in secret `GEMINI_API_KEY`,
+  every model call runs on Google's free tier (`FREE_GEMINI_MODE`): forecasters `gemini-3.8-flash`,
+  `gemini-3.6-flash` and `gemini-3.7-flash`, utility roles `gemini-3.5-flash-lite`. The free tier has no
+  grounded web search, so research in this mode is prediction markets, the resolution source,
+  financial data and the time-series anchor. Adding the donated key switches back automatically.
 - **Lean mode.** Set the repository *variable* `LEAN_MODE=true` (Settings → Secrets and variables
   → Actions → Variables) to drop both gap-fill passes and stretch a small credit budget.
 - **Schedules.** Only `run_bot_on_tournament.yaml` runs on a schedule. MiniBench, the Metaculus
