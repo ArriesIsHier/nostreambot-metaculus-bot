@@ -21,7 +21,7 @@ from scripts.download_research import LOG_BACKFILL_RUN_MODE
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_REPO = "No-Stream/nostreambot-metaculus-bot"
+DEFAULT_REPO = "ArriesIsHier/nostreambot-metaculus-bot"
 
 # --- Regex patterns for parsing GHA log lines ---
 

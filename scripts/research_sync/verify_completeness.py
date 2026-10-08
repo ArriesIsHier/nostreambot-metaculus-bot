@@ -71,7 +71,7 @@ from scripts.gha_artifacts import (
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_REPO = "No-Stream/nostreambot-metaculus-bot"
+DEFAULT_REPO = "ArriesIsHier/nostreambot-metaculus-bot"
 
 # How many examples each capped list names before collapsing the rest into a count. The
 # summary counts are always exact; these lists exist to name a few instances.

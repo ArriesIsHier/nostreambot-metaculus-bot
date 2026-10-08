@@ -67,7 +67,7 @@ from scripts.telemetry.jsonl import load_jsonl_records
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_REPO = "No-Stream/nostreambot-metaculus-bot"
+DEFAULT_REPO = "ArriesIsHier/nostreambot-metaculus-bot"
 
 # Artifacts whose name starts with this prefix are bot research uploads. Every bot
 # workflow uploads `research-<run_id>` (the test pair joined the prod three on 2026-08-03),

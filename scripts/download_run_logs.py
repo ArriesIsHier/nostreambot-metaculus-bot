@@ -49,7 +49,7 @@ logger = logging.getLogger(__name__)
 # 90-day retention expires.
 RUN_LOG_ARTIFACT_PREFIXES: tuple[str, ...] = ("research-", "logs-")
 
-DEFAULT_REPO = "No-Stream/nostreambot-metaculus-bot"
+DEFAULT_REPO = "ArriesIsHier/nostreambot-metaculus-bot"
 DEFAULT_ARCHIVE_DIR = "backtests/telemetry_archive"
 
 # Bound on the workflow-runs enumeration's ``created`` filter. Generous relative to the

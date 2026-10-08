@@ -59,7 +59,7 @@ from scripts.telemetry.archive import HarvestedRun
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_REPO = "No-Stream/nostreambot-metaculus-bot"
+DEFAULT_REPO = "ArriesIsHier/nostreambot-metaculus-bot"
 
 
 @dataclass
