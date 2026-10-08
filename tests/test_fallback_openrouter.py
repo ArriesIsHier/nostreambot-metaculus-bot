@@ -1741,3 +1741,64 @@ class TestStatuslessDigitEchoIsNotAStatus:
         """
         assert fallback_openrouter._without_prompt_echo(message) == message
         assert should_retry_with_general_key(Exception(message)) is falls_back, message
+
+
+class TestFreeGeminiMode:
+    """Fork (ArriesIsHier): with FREE_GEMINI_MODE on, every builder call lands on the free Gemini tier."""
+
+    def test_off_by_default_keeps_openrouter_routing(self, monkeypatch):
+        from metaculus_bot.fallback_openrouter import build_llm_with_openrouter_fallback
+
+        monkeypatch.delenv("FREE_GEMINI_MODE", raising=False)
+        llm = build_llm_with_openrouter_fallback("openrouter/openai/gpt-6.1-sol", role="parser")
+        assert llm.model == "openrouter/openai/gpt-6.1-sol"
+
+    def test_each_roster_vendor_gets_its_own_free_model(self, monkeypatch):
+        from metaculus_bot.constants import FREE_GEMINI_FORECASTER_MODELS
+        from metaculus_bot.fallback_openrouter import build_llm_with_openrouter_fallback
+
+        monkeypatch.setenv("FREE_GEMINI_MODE", "true")
+        models = {
+            vendor: build_llm_with_openrouter_fallback(
+                f"openrouter/{vendor}/anything", role=f"forecaster:{vendor}", reasoning={"effort": "xhigh"}
+            ).model
+            for vendor in ("openai", "anthropic", "google")
+        }
+        assert models == FREE_GEMINI_FORECASTER_MODELS
+        assert len(set(models.values())) == 3
+
+    def test_utility_roles_use_the_utility_model_and_drop_openrouter_kwargs(self, monkeypatch):
+        from metaculus_bot.constants import FREE_GEMINI_UTILITY_MODEL
+        from metaculus_bot.fallback_openrouter import build_llm_with_openrouter_fallback
+
+        monkeypatch.setenv("FREE_GEMINI_MODE", "true")
+        llm = build_llm_with_openrouter_fallback(
+            "openrouter/openai/gpt-6-luna",
+            role="market_ranker",
+            reasoning={"effort": "low"},
+            reasoning_effort="low",
+            extra_body={"plugins": []},
+            timeout=90,
+        )
+        assert llm.model == FREE_GEMINI_UTILITY_MODEL
+        for key in ("reasoning", "reasoning_effort", "extra_body"):
+            assert key not in llm.litellm_kwargs
+        assert llm.litellm_kwargs["timeout"] == 90
+
+    def test_free_models_are_gemini_slugs(self):
+        from metaculus_bot.constants import FREE_GEMINI_FORECASTER_MODELS, FREE_GEMINI_UTILITY_MODEL
+
+        for model in [*FREE_GEMINI_FORECASTER_MODELS.values(), FREE_GEMINI_UTILITY_MODEL]:
+            assert model.startswith("gemini/gemini-")
+
+
+class TestFreeGeminiSearchModel:
+    def test_free_mode_searches_on_the_free_grounded_model(self, monkeypatch):
+        from metaculus_bot.constants import FREE_GEMINI_SEARCH_MODEL, GEMINI_SEARCH_DEFAULT_MODEL
+        from metaculus_bot.research.gemini_search import _resolve_model
+
+        monkeypatch.delenv("GEMINI_SEARCH_MODEL", raising=False)
+        monkeypatch.setenv("FREE_GEMINI_MODE", "true")
+        assert _resolve_model(None) == FREE_GEMINI_SEARCH_MODEL
+        monkeypatch.setenv("FREE_GEMINI_MODE", "false")
+        assert _resolve_model(None) == GEMINI_SEARCH_DEFAULT_MODEL

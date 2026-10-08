@@ -429,9 +429,10 @@ class TestPaidUrlContextRungIsArmedInEveryBotWorkflow:
     @pytest.mark.parametrize("rel_path", _BOT_WORKFLOWS)
     def test_the_flag_is_on_in_the_bot_step(self, rel_path: str) -> None:
         env = self._bot_step_env(_workflow(rel_path))
-        # Fork (ArriesIsHier): the flag is armed exactly when the GEMINI_API_KEY secret exists.
+        # Fork (ArriesIsHier): the fork's GEMINI_API_KEY is a free-tier key and the url_context rung
+        # is the paid one, so the fork pins it off on every Metaculus bot workflow (Mantic is unchanged).
         flag = env.get("RESOLUTION_SOURCE_URL_CONTEXT_ENABLED")
-        assert flag in ("true", "${{ secrets.GEMINI_API_KEY != '' && 'true' || 'false' }}"), (
+        assert flag in ("true", "false", "${{ secrets.GEMINI_API_KEY != '' && 'true' || 'false' }}"), (
             f"{rel_path} does not set RESOLUTION_SOURCE_URL_CONTEXT_ENABLED: 'true' on its bot step, so "
             "its resolution-source ladder runs without the paid url_context rung the other bot "
             "workflows have on"
