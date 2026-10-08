@@ -9,6 +9,8 @@ from forecasting_tools import GeneralLlm
 
 from metaculus_bot.constants import (
     CREDIT_ALERT_RESUME_DATE,
+    FREE_CHAIN_PASSES,
+    FREE_CHAIN_RETRY_PAUSE_S,
     FREE_FORECASTER_CHAINS,
     FREE_MODEL_EXTRA_KWARGS,
     FREE_NON_GEMINI_MAX_TOKENS,
@@ -550,21 +552,25 @@ class FreeTierChainLlm(GeneralLlm):
         ]
 
     async def invoke(self, prompt: Any, system_prompt: str | None = None) -> str:  # type: ignore[override]
-        try:
-            return await super().invoke(prompt, system_prompt)
-        except Exception as head_error:  # HARNESS-SCAN-EXEMPT-broad-except  # free tiers fail in unbounded ways; the chain IS the handler
-            last_error: Exception = head_error
-            logger.warning("FREE_TIER_FALLBACK: model=%s failed (%s)", self.model, type(head_error).__name__)
-            for fallback in self._fallback_llms:
+        last_error: Exception | None = None
+        for attempt in range(1, FREE_CHAIN_PASSES + 1):
+            for llm in [self, *self._fallback_llms]:
                 try:
-                    answer = await fallback.invoke(prompt, system_prompt)
+                    answer = await (
+                        super().invoke(prompt, system_prompt) if llm is self else llm.invoke(prompt, system_prompt)
+                    )
                 except Exception as error:  # noqa: BLE001  # HARNESS-SCAN-EXEMPT-broad-except  # next model in the chain, last error re-raised below
                     last_error = error
-                    logger.warning("FREE_TIER_FALLBACK: model=%s failed (%s)", fallback.model, type(error).__name__)
+                    logger.warning("FREE_TIER_FALLBACK: model=%s failed (%s)", llm.model, type(error).__name__)
                     continue
-                logger.info("FREE_TIER_FALLBACK: served_by=%s head=%s", fallback.model, self.model)
+                if llm is not self or attempt > 1:
+                    logger.info("FREE_TIER_FALLBACK: served_by=%s head=%s pass=%d", llm.model, self.model, attempt)
                 return answer
-            raise last_error from head_error
+            if attempt < FREE_CHAIN_PASSES:
+                # Per-minute limits clear quickly; one pause beats dropping the slot.
+                await asyncio.sleep(FREE_CHAIN_RETRY_PAUSE_S)
+        assert last_error is not None
+        raise last_error
 
 
 def build_free_tier_llm(*, role: str | None = None, **kwargs: Any) -> GeneralLlm:
