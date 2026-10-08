@@ -1748,7 +1748,9 @@ class TestFreeTierMode:
 
     @staticmethod
     def _keys(monkeypatch, *present: str) -> None:
-        for env in ("GEMINI_API_KEY", "GROQ_API_KEY", "CEREBRAS_API_KEY"):
+        from metaculus_bot.constants import FREE_PROVIDER_KEY_ENVS
+
+        for env in FREE_PROVIDER_KEY_ENVS.values():
             if env in present:
                 monkeypatch.setenv(env, "test-key")
             else:
@@ -1761,28 +1763,55 @@ class TestFreeTierMode:
         llm = build_llm_with_openrouter_fallback("openrouter/openai/gpt-6.1-sol", role="parser")
         assert llm.model == "openrouter/openai/gpt-6.1-sol"
 
-    @pytest.mark.parametrize(
-        "keys",
-        [
-            ("GEMINI_API_KEY",),
-            ("GEMINI_API_KEY", "GROQ_API_KEY"),
-            ("GEMINI_API_KEY", "CEREBRAS_API_KEY"),
-            ("GEMINI_API_KEY", "GROQ_API_KEY", "CEREBRAS_API_KEY"),
-        ],
-    )
-    def test_roster_heads_stay_distinct_for_every_key_combination(self, monkeypatch, keys):
-        from metaculus_bot.fallback_openrouter import FreeTierChainLlm, build_llm_with_openrouter_fallback
+    def test_roster_heads_stay_distinct_for_every_key_combination(self, monkeypatch):
+        from itertools import combinations
+
+        from metaculus_bot.constants import FREE_PROVIDER_KEY_ENVS, FREE_TIER_FORECASTER_MODELS
+        from metaculus_bot.fallback_openrouter import (
+            FreeTierChainLlm,
+            available_free_models,
+            build_llm_with_openrouter_fallback,
+        )
 
         monkeypatch.setenv("FREE_GEMINI_MODE", "true")
-        self._keys(monkeypatch, *keys)
-        llms = [
-            build_llm_with_openrouter_fallback(
-                f"openrouter/{vendor}/anything", role=f"forecaster:{vendor}", reasoning={"effort": "xhigh"}
-            )
-            for vendor in ("openai", "anthropic", "google")
+        envs = list(FREE_PROVIDER_KEY_ENVS.values())
+        checked = 0
+        for size in range(1, len(envs) + 1):
+            for keys in combinations(envs, size):
+                self._keys(monkeypatch, *keys)
+                if len(available_free_models(FREE_TIER_FORECASTER_MODELS)) < 3:
+                    continue
+                llms = [
+                    build_llm_with_openrouter_fallback(
+                        f"openrouter/{vendor}/anything", role=f"forecaster:{vendor}", reasoning={"effort": "xhigh"}
+                    )
+                    for vendor in ("openai", "anthropic", "google")
+                ]
+                assert all(isinstance(llm, FreeTierChainLlm) for llm in llms)
+                assert len({llm.model for llm in llms}) == 3, keys
+                checked += 1
+        assert checked > 0
+
+    def test_each_slot_walks_every_available_model_starting_at_its_own(self, monkeypatch):
+        from metaculus_bot.constants import FREE_TIER_FORECASTER_MODELS
+        from metaculus_bot.fallback_openrouter import available_free_models, free_forecaster_chain
+
+        self._keys(monkeypatch, "GEMINI_API_KEY", "CEREBRAS_API_KEY", "GROQ_API_KEY")
+        available = available_free_models(FREE_TIER_FORECASTER_MODELS)
+        for slot in range(3):
+            chain = free_forecaster_chain(slot)
+            assert chain[0] == available[slot]
+            assert sorted(chain) == sorted(available)
+
+    def test_the_shipped_keys_put_gemini_gpt_oss_and_qwen_at_the_heads(self, monkeypatch):
+        from metaculus_bot.fallback_openrouter import free_forecaster_chain
+
+        self._keys(monkeypatch, "GEMINI_API_KEY", "CEREBRAS_API_KEY", "GROQ_API_KEY")
+        assert [free_forecaster_chain(slot)[0] for slot in range(3)] == [
+            "gemini/gemini-3.8-flash",
+            "cerebras/gpt-oss-120b",
+            "cerebras/qwen-3.8-27b",
         ]
-        assert all(isinstance(llm, FreeTierChainLlm) for llm in llms)
-        assert len({llm.model for llm in llms}) == 3
 
     def test_chains_keep_only_providers_with_a_key(self, monkeypatch):
         from metaculus_bot.fallback_openrouter import available_free_models
@@ -1829,6 +1858,26 @@ class TestFreeTierMode:
             "reasoning_effort": "high",
         }
 
+    def test_qwen_runs_at_medium_effort_so_its_reasoning_leaves_room_for_an_answer(self):
+        from metaculus_bot.fallback_openrouter import _free_model_kwargs
+
+        for model in ("cerebras/qwen-3.8-27b", "groq/qwen/qwen3.8-27b"):
+            assert _free_model_kwargs(model, {})["reasoning_effort"] == "medium"
+
+    def test_openrouter_free_models_get_the_free_key_never_the_paid_name(self, monkeypatch):
+        from metaculus_bot.fallback_openrouter import _free_model_kwargs
+
+        monkeypatch.setenv("OPENROUTER_FREE_KEY", "free-key")
+        monkeypatch.setenv("OPENROUTER_API_KEY", "paid-key")
+        kwargs = _free_model_kwargs("openrouter/nvidia/nemotron-3-ultra-550b-a55b:free", {"max_tokens": 64_000})
+        assert kwargs["api_key"] == "free-key"
+        assert "api_key" not in _free_model_kwargs("sambanova/DeepSeek-V3.2", {})
+
+    def test_utility_chain_spares_the_daily_capped_providers(self):
+        from metaculus_bot.constants import FREE_UTILITY_CHAIN
+
+        assert not [model for model in FREE_UTILITY_CHAIN if model.split("/", 1)[0] in ("sambanova", "openrouter")]
+
     @pytest.mark.asyncio
     async def test_a_failing_head_falls_back_down_the_chain(self, monkeypatch):
         from forecasting_tools import GeneralLlm
@@ -1873,9 +1922,27 @@ class TestFreeTierMode:
         assert calls == ["gemini/gemini-a", "gemini/gemini-b"] * 2
         assert len(pauses) == 1
 
-    def test_every_chain_model_names_a_known_free_provider(self):
-        from metaculus_bot.constants import FREE_FORECASTER_CHAINS, FREE_PROVIDER_KEY_ENVS, FREE_UTILITY_CHAIN
+    @pytest.mark.asyncio
+    async def test_a_fallback_logs_the_first_line_of_the_error(self, monkeypatch, caplog):
+        from forecasting_tools import GeneralLlm
 
-        for chain in [*FREE_FORECASTER_CHAINS.values(), FREE_UTILITY_CHAIN]:
+        from metaculus_bot.fallback_openrouter import FreeTierChainLlm
+
+        async def fake_invoke(self, prompt, system_prompt=None):
+            if self.model == "gemini/gemini-a":
+                raise RuntimeError("503 high demand\nsecond line")
+            return "answer"
+
+        monkeypatch.setattr(GeneralLlm, "invoke", fake_invoke)
+        llm = FreeTierChainLlm(models=["gemini/gemini-a", "gemini/gemini-b"], role="parser")
+        with caplog.at_level("WARNING", logger="metaculus_bot.fallback_openrouter"):
+            assert await llm.invoke("q") == "answer"
+        assert "FREE_TIER_FALLBACK: model=gemini/gemini-a failed (RuntimeError) 503 high demand" in caplog.text
+        assert "second line" not in caplog.text
+
+    def test_every_chain_model_names_a_known_free_provider(self):
+        from metaculus_bot.constants import FREE_PROVIDER_KEY_ENVS, FREE_TIER_FORECASTER_MODELS, FREE_UTILITY_CHAIN
+
+        for chain in [FREE_TIER_FORECASTER_MODELS, FREE_UTILITY_CHAIN]:
             for model in chain:
                 assert model.split("/", 1)[0] in FREE_PROVIDER_KEY_ENVS

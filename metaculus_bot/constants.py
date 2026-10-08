@@ -556,49 +556,56 @@ GEMINI_SEARCH_DEFAULT_MODEL: str = "gemini-3.8-flash"
 # every Gemini 3 free tier) and checked live the same day: gemini-2.5-pro / gemini-2.5-flash
 # answer 404 "no longer available to new users", and the free 3.x Flash models answer 503 "high
 # demand" at peak, which is why every slot is a CHAIN across providers rather than one model.
-# Groq and Cerebras ids read from their model docs on 2026-10-08.
+# Groq and Cerebras ids read from their model docs on 2026-10-08. Optional providers, each used only
+# when its key is set, read the same day: SambaNova's free tier (docs.sambanova.ai rate limits: 20
+# requests a day per model, 200k tokens a day), OpenRouter's ":free" models (live
+# openrouter.ai/api/v1/models list; 50 requests a day on an account with no credit, under a SEPARATE
+# key name so it never switches the paid pipeline on), and Mistral's free Experiment plan, addressed
+# through its "-latest" aliases.
 FREE_GEMINI_MODE_ENV: str = "FREE_GEMINI_MODE"
 GEMINI_API_KEY_ENV: str = "GEMINI_API_KEY"
 GROQ_API_KEY_ENV: str = "GROQ_API_KEY"
 CEREBRAS_API_KEY_ENV: str = "CEREBRAS_API_KEY"
-# litellm provider prefix -> the env var it reads that provider's key from.
+MISTRAL_API_KEY_ENV: str = "MISTRAL_API_KEY"
+SAMBANOVA_API_KEY_ENV: str = "SAMBANOVA_API_KEY"
+OPENROUTER_FREE_KEY_ENV: str = "OPENROUTER_FREE_KEY"
+# litellm provider prefix -> the env var holding that provider's key. litellm reads the first five
+# from the environment itself; the OpenRouter one is passed explicitly (fallback_openrouter).
 FREE_PROVIDER_KEY_ENVS: dict[str, str] = {
     "gemini": GEMINI_API_KEY_ENV,
     "groq": GROQ_API_KEY_ENV,
     "cerebras": CEREBRAS_API_KEY_ENV,
+    "mistral": MISTRAL_API_KEY_ENV,
+    "sambanova": SAMBANOVA_API_KEY_ENV,
+    "openrouter": OPENROUTER_FREE_KEY_ENV,
 }
-# Per roster slot, models in preference order; only providers whose key is set are kept. The heads
-# differ for every key combination, so the comment's per-model bullets stay distinct. Groq sits last
-# everywhere: its free tier caps tokens per minute (about 8k on gpt-oss), below one forecaster
-# prompt plus its output, so it is a last resort rather than a slot.
-FREE_FORECASTER_CHAINS: dict[str, tuple[str, ...]] = {
-    "openai": (
-        "gemini/gemini-3.8-flash",
-        "cerebras/gpt-oss-120b",
-        "cerebras/qwen-3.8-27b",
-        "gemini/gemini-3.7-flash",
-        "groq/openai/gpt-oss-120b",
-    ),
-    "anthropic": (
-        "cerebras/qwen-3.8-27b",
-        "gemini/gemini-3.7-flash",
-        "cerebras/gpt-oss-120b",
-        "gemini/gemini-3.6-flash",
-        "groq/qwen/qwen3.8-27b",
-    ),
-    "google": (
-        "cerebras/gpt-oss-120b",
-        "gemini/gemini-3.6-flash",
-        "cerebras/qwen-3.8-27b",
-        "gemini/gemini-3.8-flash",
-        "groq/openai/gpt-oss-120b",
-    ),
-}
+# Forecaster models, strongest first, providers interleaved so a failing provider's next model is
+# usually elsewhere. Only models whose key is set are kept, and roster slot i starts its chain at
+# the i-th of them (FREE_TIER_FORECASTER_SLOTS), so the three heads differ whenever three models are
+# available and each slot falls back through all the rest. Groq sits last: its free tier caps
+# tokens per minute (about 8k on gpt-oss), below one forecaster prompt plus its output.
+FREE_TIER_FORECASTER_MODELS: tuple[str, ...] = (
+    "gemini/gemini-3.8-flash",
+    "sambanova/DeepSeek-V3.2",
+    "openrouter/nvidia/nemotron-3-ultra-550b-a55b:free",
+    "cerebras/gpt-oss-120b",
+    "mistral/mistral-large-latest",
+    "cerebras/qwen-3.8-27b",
+    "gemini/gemini-3.7-flash",
+    "sambanova/DeepSeek-V3.1",
+    "mistral/mistral-medium-latest",
+    "gemini/gemini-3.6-flash",
+    "groq/openai/gpt-oss-120b",
+    "groq/qwen/qwen3.8-27b",
+)
+FREE_TIER_FORECASTER_SLOTS: dict[str, int] = {"openai": 0, "anthropic": 1, "google": 2}
 # Parser, market ranker (prompts up to ~35k tokens), page digest, classifiers: Gemini first for
 # its 1M context, the other providers only as a last resort.
+# SambaNova and OpenRouter's daily request caps are kept for the forecasters.
 FREE_UTILITY_CHAIN: tuple[str, ...] = (
     "gemini/gemini-3.5-flash-lite",
     "cerebras/gpt-oss-120b",
+    "mistral/mistral-medium-latest",
     "gemini/gemini-3.6-flash",
     "cerebras/qwen-3.8-27b",
     "gemini/gemini-3.8-flash",
@@ -606,12 +613,18 @@ FREE_UTILITY_CHAIN: tuple[str, ...] = (
 # Free tiers limit per minute: when a whole chain fails, wait this long and walk it once more.
 FREE_CHAIN_RETRY_PAUSE_S: float = 20.0
 FREE_CHAIN_PASSES: int = 2
+# FREE_TIER_FALLBACK logs this much of a failed call's error message.
+FREE_ERROR_BRIEF_CHARS: int = 200
 # Cerebras' free tier caps context at 65k tokens in total, so non-Gemini outputs are capped.
 FREE_NON_GEMINI_MAX_TOKENS: int = 16_000
-# gpt-oss takes an explicit reasoning effort; the Gemini models run at their default thinking.
+# Explicit reasoning efforts; the Gemini models run at their default thinking. Qwen 3.8 defaults
+# to high, whose reasoning counts against the output cap and used all 16k of it before writing an
+# answer (empty content on every Q14333 call, 2026-10-08), so it runs at medium.
 FREE_MODEL_EXTRA_KWARGS: dict[str, dict[str, str]] = {
     "cerebras/gpt-oss-120b": {"reasoning_effort": "high"},
     "groq/openai/gpt-oss-120b": {"reasoning_effort": "high"},
+    "cerebras/qwen-3.8-27b": {"reasoning_effort": "medium"},
+    "groq/qwen/qwen3.8-27b": {"reasoning_effort": "medium"},
 }
 
 # --- Free news search (research/free_news.py; ArriesIsHier fork) ---

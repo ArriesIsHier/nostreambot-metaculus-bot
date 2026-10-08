@@ -11,13 +11,16 @@ from metaculus_bot.constants import (
     CREDIT_ALERT_RESUME_DATE,
     FREE_CHAIN_PASSES,
     FREE_CHAIN_RETRY_PAUSE_S,
-    FREE_FORECASTER_CHAINS,
+    FREE_ERROR_BRIEF_CHARS,
     FREE_MODEL_EXTRA_KWARGS,
     FREE_NON_GEMINI_MAX_TOKENS,
     FREE_PROVIDER_KEY_ENVS,
+    FREE_TIER_FORECASTER_MODELS,
+    FREE_TIER_FORECASTER_SLOTS,
     FREE_UTILITY_CHAIN,
     OAI_ANTH_OPENROUTER_KEY_ENV,
     OPENROUTER_API_KEY_ENV,
+    OPENROUTER_FREE_KEY_ENV,
     credit_alerts_active,
     donated_openrouter_key_enabled,
     free_gemini_mode,
@@ -527,12 +530,24 @@ def available_free_models(chain: tuple[str, ...]) -> list[str]:
 
 
 def _free_model_kwargs(model: str, kwargs: dict[str, Any]) -> dict[str, Any]:
-    """Per-model request kwargs: OpenRouter-only knobs dropped, non-Gemini output capped."""
+    """Per-model request kwargs: OpenRouter-only knobs dropped, non-Gemini output capped.
+
+    An ``openrouter/`` model gets the free key explicitly: litellm would otherwise read
+    ``OPENROUTER_API_KEY``, the name that switches the paid pipeline on.
+    """
     model_kwargs = {key: value for key, value in kwargs.items() if key not in _OPENROUTER_ONLY_KWARGS}
     if not model.startswith("gemini/") and "max_tokens" in model_kwargs:
         model_kwargs["max_tokens"] = min(model_kwargs["max_tokens"], FREE_NON_GEMINI_MAX_TOKENS)
     model_kwargs.update(FREE_MODEL_EXTRA_KWARGS.get(model, {}))
+    if model.startswith("openrouter/"):
+        model_kwargs["api_key"] = os.getenv(OPENROUTER_FREE_KEY_ENV)
     return model_kwargs
+
+
+def _error_brief(error: Exception) -> str:
+    """The first line of ``error``'s message, short enough for one log line."""
+    text = str(error).strip()
+    return (text.splitlines()[0] if text else "")[:FREE_ERROR_BRIEF_CHARS]
 
 
 class FreeTierChainLlm(GeneralLlm):
@@ -561,7 +576,12 @@ class FreeTierChainLlm(GeneralLlm):
                     )
                 except Exception as error:  # noqa: BLE001  # HARNESS-SCAN-EXEMPT-broad-except  # next model in the chain, last error re-raised below
                     last_error = error
-                    logger.warning("FREE_TIER_FALLBACK: model=%s failed (%s)", llm.model, type(error).__name__)
+                    logger.warning(
+                        "FREE_TIER_FALLBACK: model=%s failed (%s) %s",
+                        llm.model,
+                        type(error).__name__,
+                        _error_brief(error),
+                    )
                     continue
                 if llm is not self or attempt > 1:
                     logger.info("FREE_TIER_FALLBACK: served_by=%s head=%s pass=%d", llm.model, self.model, attempt)
@@ -573,12 +593,26 @@ class FreeTierChainLlm(GeneralLlm):
         raise last_error
 
 
+def free_forecaster_chain(slot: int) -> list[str]:
+    """Roster slot ``slot``'s chain: the available forecaster models, rotated to start at the slot-th.
+
+    Rotation keeps the heads distinct whenever at least as many models as slots are available,
+    whatever keys are set, and still lets every slot fall back through every other model.
+    """
+    models = available_free_models(FREE_TIER_FORECASTER_MODELS)
+    start = slot % len(models)
+    return models[start:] + models[:start]
+
+
 def build_free_tier_llm(*, role: str | None = None, **kwargs: Any) -> GeneralLlm:
     """The free-mode ``GeneralLlm`` for ``role``, chosen by role rather than by model.
 
-    A roster slot (``forecaster:<vendor>``) gets that vendor's chain in ``FREE_FORECASTER_CHAINS``;
+    A roster slot (``forecaster:<vendor>``) gets its rotation of ``FREE_TIER_FORECASTER_MODELS``;
     every other role gets ``FREE_UTILITY_CHAIN``.
     """
     vendor = role.split(":", 1)[1] if role and role.startswith("forecaster:") else ""
-    chain = FREE_FORECASTER_CHAINS.get(vendor, FREE_UTILITY_CHAIN)
-    return FreeTierChainLlm(models=available_free_models(chain), role=role, **kwargs)
+    if vendor in FREE_TIER_FORECASTER_SLOTS:
+        models = free_forecaster_chain(FREE_TIER_FORECASTER_SLOTS[vendor])
+    else:
+        models = available_free_models(FREE_UTILITY_CHAIN)
+    return FreeTierChainLlm(models=models, role=role, **kwargs)

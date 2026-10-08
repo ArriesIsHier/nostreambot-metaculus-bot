@@ -18,16 +18,21 @@ research stack and its Summer 2026 result (15th of 277) belongs to them. This fo
 - **Roster.** The Google slot is `gemini-3.8-flash` (effort high) instead of
   `gemini-3.1-pro-preview`, which upstream pins to a personal key. OpenAI and Anthropic slots are
   unchanged (`gpt-6.1-sol`, `claude-opus-5.5`, both xhigh).
-- **Free mode.** With no OpenRouter key and a free Google AI Studio key in secret `GEMINI_API_KEY`,
-  every model call runs on Google's free tier (`FREE_GEMINI_MODE`): forecasters `gemini-3.8-flash`,
-  `gemini-3.6-flash` and `gemini-3.7-flash`, utility roles `gemini-3.5-flash-lite`. The free tier has no
-  grounded web search, so research in this mode is prediction markets, the resolution source,
-  financial data and the time-series anchor. Adding the donated key switches back automatically.
+- **Free mode.** With no OpenRouter key and at least one free-tier key, every model call runs on
+  free API tiers (`FREE_GEMINI_MODE`). Each provider joins when its repository secret is set:
+  `GEMINI_API_KEY` (Google AI Studio), `CEREBRAS_API_KEY`, `GROQ_API_KEY`, `MISTRAL_API_KEY`
+  (free Experiment plan), `SAMBANOVA_API_KEY` (DeepSeek, 20 requests a day per model) and
+  `OPENROUTER_FREE_KEY` (OpenRouter `:free` models; a separate name, so it never switches the paid
+  pipeline on). The three forecasters start on three different models from
+  `FREE_TIER_FORECASTER_MODELS` and fall back through the rest when one is overloaded or rate
+  limited. Research adds free news search (GDELT, plus Tavily with `TAVILY_API_KEY`) to prediction
+  markets, the resolution source, financial data and the time-series anchor. The free tiers have no
+  grounded web search. Adding the donated key switches back automatically.
 - **Lean mode.** Set the repository *variable* `LEAN_MODE=true` (Settings → Secrets and variables
   → Actions → Variables) to drop both gap-fill passes and stretch a small credit budget.
-- **Schedules.** Only `run_bot_on_tournament.yaml` runs on a schedule. MiniBench, the Metaculus
-  Cup and Mantic are manual-dispatch only. `scripts/cronjob_dispatch_setup.py` dispatches this
-  fork and enables only the tournament job.
+- **Schedules.** The tournament and MiniBench workflows run on a schedule, and cron-job.org
+  dispatches them more reliably (every 10 and 15 minutes). The Metaculus Cup and Mantic are
+  manual-dispatch only. `scripts/cronjob_dispatch_setup.py` dispatches this fork.
 
 ### Setup checklist
 
