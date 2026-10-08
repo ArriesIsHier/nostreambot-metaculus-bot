@@ -131,3 +131,34 @@ class TestProviderGating:
 
         monkeypatch.setattr(fn, "build_llm_with_openrouter_fallback", lambda *a, **k: Boom())
         assert await fn.author_queries("Will Brazil hold a runoff?") == ["Brazil hold runoff"]
+
+
+class TestGdeltRetry:
+    @pytest.mark.asyncio
+    async def test_a_rate_limited_answer_is_retried_once(self, monkeypatch):
+        answers = iter([None, '{"articles": [{"url": "https://a.com/1", "title": "Hit"}]}'])
+
+        async def fake_get_text(session, url, max_bytes):
+            return next(answers)
+
+        async def no_sleep(_seconds):
+            return None
+
+        monkeypatch.setattr(fn, "_get_text", fake_get_text)
+        monkeypatch.setattr(fn, "GDELT_MIN_INTERVAL_S", 0.0)
+        monkeypatch.setattr(fn.asyncio, "sleep", no_sleep)
+        items = await fn.search_gdelt(session=None, query="q")  # type: ignore[arg-type]
+        assert [item.title for item in items] == ["Hit"]
+
+    @pytest.mark.asyncio
+    async def test_a_plain_text_error_that_is_not_a_rate_limit_is_not_retried(self, monkeypatch):
+        calls = []
+
+        async def fake_get_text(session, url, max_bytes):
+            calls.append(url)
+            return "Your search contained a phrase that was too short."
+
+        monkeypatch.setattr(fn, "_get_text", fake_get_text)
+        monkeypatch.setattr(fn, "GDELT_MIN_INTERVAL_S", 0.0)
+        assert await fn.search_gdelt(session=None, query="q") == []  # type: ignore[arg-type]
+        assert len(calls) == 1
