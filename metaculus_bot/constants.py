@@ -547,23 +547,93 @@ GEMINI_USE_DONATED_OPENROUTER_KEY_ENV: str = "GEMINI_USE_DONATED_OPENROUTER_KEY"
 # Verified live on the native SDK 2026-09-03. Receipt: docs/constants.md "GEMINI_SEARCH_DEFAULT_MODEL".
 GEMINI_SEARCH_DEFAULT_MODEL: str = "gemini-3.8-flash"
 
-# --- Free Gemini mode (ArriesIsHier fork) ---
-# With no OpenRouter key at all, every LLM role runs on the Google AI Studio FREE tier (no
-# billing) through litellm's gemini/ provider, which reads GEMINI_API_KEY. Free-tier facts read
-# from ai.google.dev/gemini-api/docs/pricing on 2026-10-08 (tokens free on the 3.5-3.8 Flash
-# family; Google Search grounding "Not available" on every Gemini 3 free tier) and checked live
-# the same day: gemini-2.5-pro and gemini-2.5-flash answer 404 "no longer available to new
-# users", so the free key has no grounded search at all and grounded search stays off.
+# --- Free mode (ArriesIsHier fork) ---
+# With no OpenRouter key at all, every LLM role runs on free API tiers through litellm, which reads
+# each provider's key from the environment. Gemini facts read from ai.google.dev pricing on
+# 2026-10-08 (tokens free on the 3.5-3.8 Flash family; Google Search grounding "Not available" on
+# every Gemini 3 free tier) and checked live the same day: gemini-2.5-pro / gemini-2.5-flash
+# answer 404 "no longer available to new users", and the free 3.x Flash models answer 503 "high
+# demand" at peak, which is why every slot is a CHAIN across providers rather than one model.
+# Groq and Cerebras ids read from their model docs on 2026-10-08.
 FREE_GEMINI_MODE_ENV: str = "FREE_GEMINI_MODE"
 GEMINI_API_KEY_ENV: str = "GEMINI_API_KEY"
-# One distinct free model per roster vendor slot, so the comment's per-model bullets stay distinct.
-FREE_GEMINI_FORECASTER_MODELS: dict[str, str] = {
-    "openai": "gemini/gemini-3.8-flash",
-    "anthropic": "gemini/gemini-3.6-flash",
-    "google": "gemini/gemini-3.7-flash",
+GROQ_API_KEY_ENV: str = "GROQ_API_KEY"
+CEREBRAS_API_KEY_ENV: str = "CEREBRAS_API_KEY"
+# litellm provider prefix -> the env var it reads that provider's key from.
+FREE_PROVIDER_KEY_ENVS: dict[str, str] = {
+    "gemini": GEMINI_API_KEY_ENV,
+    "groq": GROQ_API_KEY_ENV,
+    "cerebras": CEREBRAS_API_KEY_ENV,
 }
-# Parser, market ranker, page digest, classifiers: capability-saturated tasks.
-FREE_GEMINI_UTILITY_MODEL: str = "gemini/gemini-3.5-flash-lite"
+# Per roster slot, models in preference order; only providers whose key is set are kept. The heads
+# differ for every key combination, so the comment's per-model bullets stay distinct.
+FREE_FORECASTER_CHAINS: dict[str, tuple[str, ...]] = {
+    "openai": (
+        "gemini/gemini-3.8-flash",
+        "groq/minimaxai/minimax-m2.7",
+        "cerebras/gpt-oss-120b",
+        "groq/openai/gpt-oss-120b",
+        "gemini/gemini-3.7-flash",
+        "gemini/gemini-3.6-flash",
+    ),
+    "anthropic": (
+        "groq/minimaxai/minimax-m2.7",
+        "gemini/gemini-3.7-flash",
+        "cerebras/gpt-oss-120b",
+        "groq/openai/gpt-oss-120b",
+        "gemini/gemini-3.6-flash",
+        "gemini/gemini-3.8-flash",
+    ),
+    "google": (
+        "cerebras/gpt-oss-120b",
+        "groq/openai/gpt-oss-120b",
+        "gemini/gemini-3.6-flash",
+        "gemini/gemini-3.7-flash",
+        "gemini/gemini-3.8-flash",
+    ),
+}
+# Parser, market ranker (prompts up to ~35k tokens), page digest, classifiers: Gemini first for
+# its 1M context, the other providers only as a last resort.
+FREE_UTILITY_CHAIN: tuple[str, ...] = (
+    "gemini/gemini-3.5-flash-lite",
+    "gemini/gemini-3.6-flash",
+    "gemini/gemini-3.8-flash",
+    "cerebras/gpt-oss-120b",
+    "groq/openai/gpt-oss-120b",
+)
+# Cerebras' free tier caps context at 65k tokens in total, so non-Gemini outputs are capped.
+FREE_NON_GEMINI_MAX_TOKENS: int = 16_000
+# gpt-oss takes an explicit reasoning effort; the Gemini models run at their default thinking.
+FREE_MODEL_EXTRA_KWARGS: dict[str, dict[str, str]] = {
+    "cerebras/gpt-oss-120b": {"reasoning_effort": "high"},
+    "groq/openai/gpt-oss-120b": {"reasoning_effort": "high"},
+}
+
+# --- Free news search (research/free_news.py; ArriesIsHier fork) ---
+# GDELT's DOC API needs no key and permits commercial use; Tavily's free plan (1,000 searches a
+# month) joins when TAVILY_API_KEY is set. Google News / Bing News RSS also answer keyless but
+# restrict use to personal, non-commercial readers, so they are not used. Leakage-unsafe, so the
+# provider returns "" under is_benchmarking like prediction_market.
+FREE_NEWS_ENABLED_ENV: str = "FREE_NEWS_ENABLED"
+TAVILY_API_KEY_ENV: str = "TAVILY_API_KEY"
+# Query author: the cheapest tier; in free mode the builder swaps in the free utility chain.
+FREE_NEWS_QUERY_MODEL: str = "openrouter/openai/gpt-6-luna"
+FREE_NEWS_QUERY_TIMEOUT: float = 45.0
+FREE_NEWS_MAX_QUERIES: int = 3
+# Two Tavily searches per question keeps ~15 questions/day inside the free 1,000 a month.
+FREE_NEWS_TAVILY_MAX_QUERIES: int = 2
+FREE_NEWS_TAVILY_MAX_RESULTS: int = 6
+FREE_NEWS_TAVILY_DAYS: int = 30
+FREE_NEWS_GDELT_MAX_RECORDS: int = 15
+FREE_NEWS_GDELT_TIMESPAN: str = "3weeks"
+FREE_NEWS_MAX_HEADLINES: int = 30
+FREE_NEWS_MAX_ARTICLES: int = 4
+FREE_NEWS_ARTICLE_CHARS: int = 1_500
+FREE_NEWS_HTTP_TIMEOUT: float = 20.0
+# Three GDELT queries paced 5.5 s apart, article reads and the query author fit inside this.
+FREE_NEWS_WALL_TIMEOUT: float = 150.0
+FREE_NEWS_MAX_FEED_BYTES: int = 2_000_000
+FREE_NEWS_MAX_PAGE_BYTES: int = 3_000_000
 # 6 min: a 10-round AFC chain takes 150-200 s. Receipt: docs/constants.md "GEMINI_SEARCH_TIMEOUT".
 GEMINI_SEARCH_TIMEOUT: int = 360
 # Per-call wall for resolving all cited search links; use the remaining search wall. Receipt: docs/constants.md "GEMINI_SEARCH_LINK_RESOLVE_TIMEOUT_S".

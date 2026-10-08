@@ -9,8 +9,11 @@ from forecasting_tools import GeneralLlm
 
 from metaculus_bot.constants import (
     CREDIT_ALERT_RESUME_DATE,
-    FREE_GEMINI_FORECASTER_MODELS,
-    FREE_GEMINI_UTILITY_MODEL,
+    FREE_FORECASTER_CHAINS,
+    FREE_MODEL_EXTRA_KWARGS,
+    FREE_NON_GEMINI_MAX_TOKENS,
+    FREE_PROVIDER_KEY_ENVS,
+    FREE_UTILITY_CHAIN,
     OAI_ANTH_OPENROUTER_KEY_ENV,
     OPENROUTER_API_KEY_ENV,
     credit_alerts_active,
@@ -481,7 +484,7 @@ def build_llm_with_openrouter_fallback(model: str, *, role: str | None = None, *
     use). Pass it at every production call site; a missing role books as ``untagged``.
     """
     if free_gemini_mode():
-        return build_free_gemini_llm(role=role, **kwargs)
+        return build_free_tier_llm(role=role, **kwargs)
     if should_route_via_donated_key(model):
         special_key = os.getenv(OAI_ANTH_OPENROUTER_KEY_ENV)
         general_key = os.getenv(OPENROUTER_API_KEY_ENV)
@@ -505,20 +508,71 @@ def build_llm_with_openrouter_fallback(model: str, *, role: str | None = None, *
     return GeneralLlm(model=model, metadata=llm_call_metadata(role, plain_llm_key_alias(model)), **kwargs)
 
 
-# OpenRouter-only request knobs. The Gemini API rejects unknown fields, and the free models run
-# fine at their default thinking, so these are dropped rather than translated.
+# OpenRouter-only request knobs. The free providers reject unknown fields, and the Gemini models
+# run fine at their default thinking, so these are dropped rather than translated.
 _OPENROUTER_ONLY_KWARGS: tuple[str, ...] = ("reasoning", "reasoning_effort", "extra_body")
 
 
-def build_free_gemini_llm(*, role: str | None = None, **kwargs: Any) -> GeneralLlm:
-    """A ``GeneralLlm`` on the Google AI Studio free tier, chosen by role rather than by model.
+def available_free_models(chain: tuple[str, ...]) -> list[str]:
+    """``chain`` filtered to providers whose key is set; the whole chain when none is.
 
-    A roster slot (``forecaster:<vendor>``) gets that vendor's entry in
-    ``FREE_GEMINI_FORECASTER_MODELS``; every other role gets ``FREE_GEMINI_UTILITY_MODEL``.
-    litellm reads ``GEMINI_API_KEY`` from the environment for ``gemini/`` slugs.
+    Returning the unfiltered chain rather than raising keeps an import-time roster build from
+    crashing a run with no keys at all; the first call then fails loudly with the provider's
+    own missing-key error.
+    """
+    available = [model for model in chain if os.getenv(FREE_PROVIDER_KEY_ENVS.get(model.split("/", 1)[0], ""))]
+    return available or list(chain)
+
+
+def _free_model_kwargs(model: str, kwargs: dict[str, Any]) -> dict[str, Any]:
+    """Per-model request kwargs: OpenRouter-only knobs dropped, non-Gemini output capped."""
+    model_kwargs = {key: value for key, value in kwargs.items() if key not in _OPENROUTER_ONLY_KWARGS}
+    if not model.startswith("gemini/") and "max_tokens" in model_kwargs:
+        model_kwargs["max_tokens"] = min(model_kwargs["max_tokens"], FREE_NON_GEMINI_MAX_TOKENS)
+    model_kwargs.update(FREE_MODEL_EXTRA_KWARGS.get(model, {}))
+    return model_kwargs
+
+
+class FreeTierChainLlm(GeneralLlm):
+    """A ``GeneralLlm`` on free API tiers that walks a chain of models until one answers.
+
+    Free tiers fail in ways a paid key does not (503 "high demand", 429 quota, 404 for a model
+    closed to new users), and any one of them would otherwise drop the slot. ``model`` is the
+    chain's head, so roster labels name the preferred model; a run's log names which one served.
+    """
+
+    def __init__(self, *, models: list[str], role: str | None = None, **kwargs: Any) -> None:
+        head, *rest = models
+        metadata = llm_call_metadata(role, DIRECT_KEY_ALIAS)
+        super().__init__(model=head, metadata=metadata, **_free_model_kwargs(head, kwargs))
+        self._fallback_llms: list[GeneralLlm] = [
+            GeneralLlm(model=model, metadata=metadata, **_free_model_kwargs(model, kwargs)) for model in rest
+        ]
+
+    async def invoke(self, prompt: Any, system_prompt: str | None = None) -> str:  # type: ignore[override]
+        try:
+            return await super().invoke(prompt, system_prompt)
+        except Exception as head_error:  # HARNESS-SCAN-EXEMPT-broad-except  # free tiers fail in unbounded ways; the chain IS the handler
+            last_error: Exception = head_error
+            logger.warning("FREE_TIER_FALLBACK: model=%s failed (%s)", self.model, type(head_error).__name__)
+            for fallback in self._fallback_llms:
+                try:
+                    answer = await fallback.invoke(prompt, system_prompt)
+                except Exception as error:  # noqa: BLE001  # HARNESS-SCAN-EXEMPT-broad-except  # next model in the chain, last error re-raised below
+                    last_error = error
+                    logger.warning("FREE_TIER_FALLBACK: model=%s failed (%s)", fallback.model, type(error).__name__)
+                    continue
+                logger.info("FREE_TIER_FALLBACK: served_by=%s head=%s", fallback.model, self.model)
+                return answer
+            raise last_error from head_error
+
+
+def build_free_tier_llm(*, role: str | None = None, **kwargs: Any) -> GeneralLlm:
+    """The free-mode ``GeneralLlm`` for ``role``, chosen by role rather than by model.
+
+    A roster slot (``forecaster:<vendor>``) gets that vendor's chain in ``FREE_FORECASTER_CHAINS``;
+    every other role gets ``FREE_UTILITY_CHAIN``.
     """
     vendor = role.split(":", 1)[1] if role and role.startswith("forecaster:") else ""
-    model = FREE_GEMINI_FORECASTER_MODELS.get(vendor, FREE_GEMINI_UTILITY_MODEL)
-    for key in _OPENROUTER_ONLY_KWARGS:
-        kwargs.pop(key, None)
-    return GeneralLlm(model=model, metadata=llm_call_metadata(role, DIRECT_KEY_ALIAS), **kwargs)
+    chain = FREE_FORECASTER_CHAINS.get(vendor, FREE_UTILITY_CHAIN)
+    return FreeTierChainLlm(models=available_free_models(chain), role=role, **kwargs)

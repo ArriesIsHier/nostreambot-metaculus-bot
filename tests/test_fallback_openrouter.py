@@ -1743,8 +1743,16 @@ class TestStatuslessDigitEchoIsNotAStatus:
         assert should_retry_with_general_key(Exception(message)) is falls_back, message
 
 
-class TestFreeGeminiMode:
-    """Fork (ArriesIsHier): with FREE_GEMINI_MODE on, every builder call lands on the free Gemini tier."""
+class TestFreeTierMode:
+    """Fork (ArriesIsHier): with FREE_GEMINI_MODE on, every builder call lands on a free-tier chain."""
+
+    @staticmethod
+    def _keys(monkeypatch, *present: str) -> None:
+        for env in ("GEMINI_API_KEY", "GROQ_API_KEY", "CEREBRAS_API_KEY"):
+            if env in present:
+                monkeypatch.setenv(env, "test-key")
+            else:
+                monkeypatch.delenv(env, raising=False)
 
     def test_off_by_default_keeps_openrouter_routing(self, monkeypatch):
         from metaculus_bot.fallback_openrouter import build_llm_with_openrouter_fallback
@@ -1753,25 +1761,50 @@ class TestFreeGeminiMode:
         llm = build_llm_with_openrouter_fallback("openrouter/openai/gpt-6.1-sol", role="parser")
         assert llm.model == "openrouter/openai/gpt-6.1-sol"
 
-    def test_each_roster_vendor_gets_its_own_free_model(self, monkeypatch):
-        from metaculus_bot.constants import FREE_GEMINI_FORECASTER_MODELS
-        from metaculus_bot.fallback_openrouter import build_llm_with_openrouter_fallback
+    @pytest.mark.parametrize(
+        "keys",
+        [
+            ("GEMINI_API_KEY",),
+            ("GEMINI_API_KEY", "GROQ_API_KEY"),
+            ("GEMINI_API_KEY", "CEREBRAS_API_KEY"),
+            ("GEMINI_API_KEY", "GROQ_API_KEY", "CEREBRAS_API_KEY"),
+        ],
+    )
+    def test_roster_heads_stay_distinct_for_every_key_combination(self, monkeypatch, keys):
+        from metaculus_bot.fallback_openrouter import FreeTierChainLlm, build_llm_with_openrouter_fallback
 
         monkeypatch.setenv("FREE_GEMINI_MODE", "true")
-        models = {
-            vendor: build_llm_with_openrouter_fallback(
+        self._keys(monkeypatch, *keys)
+        llms = [
+            build_llm_with_openrouter_fallback(
                 f"openrouter/{vendor}/anything", role=f"forecaster:{vendor}", reasoning={"effort": "xhigh"}
-            ).model
+            )
             for vendor in ("openai", "anthropic", "google")
-        }
-        assert models == FREE_GEMINI_FORECASTER_MODELS
-        assert len(set(models.values())) == 3
+        ]
+        assert all(isinstance(llm, FreeTierChainLlm) for llm in llms)
+        assert len({llm.model for llm in llms}) == 3
 
-    def test_utility_roles_use_the_utility_model_and_drop_openrouter_kwargs(self, monkeypatch):
-        from metaculus_bot.constants import FREE_GEMINI_UTILITY_MODEL
+    def test_chains_keep_only_providers_with_a_key(self, monkeypatch):
+        from metaculus_bot.fallback_openrouter import available_free_models
+
+        self._keys(monkeypatch, "GEMINI_API_KEY")
+        assert available_free_models(("groq/x", "gemini/gemini-a", "cerebras/y", "gemini/gemini-b")) == [
+            "gemini/gemini-a",
+            "gemini/gemini-b",
+        ]
+
+    def test_no_keys_at_all_keeps_the_whole_chain(self, monkeypatch):
+        from metaculus_bot.fallback_openrouter import available_free_models
+
+        self._keys(monkeypatch)
+        assert available_free_models(("groq/x", "gemini/y")) == ["groq/x", "gemini/y"]
+
+    def test_utility_roles_use_the_utility_chain_and_drop_openrouter_kwargs(self, monkeypatch):
+        from metaculus_bot.constants import FREE_UTILITY_CHAIN
         from metaculus_bot.fallback_openrouter import build_llm_with_openrouter_fallback
 
         monkeypatch.setenv("FREE_GEMINI_MODE", "true")
+        self._keys(monkeypatch, "GEMINI_API_KEY")
         llm = build_llm_with_openrouter_fallback(
             "openrouter/openai/gpt-6-luna",
             role="market_ranker",
@@ -1780,13 +1813,58 @@ class TestFreeGeminiMode:
             extra_body={"plugins": []},
             timeout=90,
         )
-        assert llm.model == FREE_GEMINI_UTILITY_MODEL
+        assert llm.model == FREE_UTILITY_CHAIN[0]
         for key in ("reasoning", "reasoning_effort", "extra_body"):
             assert key not in llm.litellm_kwargs
         assert llm.litellm_kwargs["timeout"] == 90
 
-    def test_free_models_are_gemini_slugs(self):
-        from metaculus_bot.constants import FREE_GEMINI_FORECASTER_MODELS, FREE_GEMINI_UTILITY_MODEL
+    def test_non_gemini_output_is_capped_and_gpt_oss_gets_its_effort(self):
+        from metaculus_bot.constants import FREE_NON_GEMINI_MAX_TOKENS
+        from metaculus_bot.fallback_openrouter import _free_model_kwargs
 
-        for model in [*FREE_GEMINI_FORECASTER_MODELS.values(), FREE_GEMINI_UTILITY_MODEL]:
-            assert model.startswith("gemini/gemini-")
+        kwargs = {"max_tokens": 64_000, "reasoning": {"effort": "xhigh"}}
+        assert _free_model_kwargs("gemini/gemini-3.8-flash", kwargs) == {"max_tokens": 64_000}
+        assert _free_model_kwargs("cerebras/gpt-oss-120b", kwargs) == {
+            "max_tokens": FREE_NON_GEMINI_MAX_TOKENS,
+            "reasoning_effort": "high",
+        }
+
+    @pytest.mark.asyncio
+    async def test_a_failing_head_falls_back_down_the_chain(self, monkeypatch):
+        from forecasting_tools import GeneralLlm
+
+        from metaculus_bot.fallback_openrouter import FreeTierChainLlm
+
+        calls: list[str] = []
+
+        async def fake_invoke(self, prompt, system_prompt=None):
+            calls.append(self.model)
+            if self.model != "gemini/gemini-c":
+                raise RuntimeError(f"{self.model} overloaded")
+            return "answer"
+
+        monkeypatch.setattr(GeneralLlm, "invoke", fake_invoke)
+        llm = FreeTierChainLlm(models=["gemini/gemini-a", "gemini/gemini-b", "gemini/gemini-c"], role="parser")
+        assert await llm.invoke("q") == "answer"
+        assert calls == ["gemini/gemini-a", "gemini/gemini-b", "gemini/gemini-c"]
+
+    @pytest.mark.asyncio
+    async def test_an_exhausted_chain_raises_the_last_error(self, monkeypatch):
+        from forecasting_tools import GeneralLlm
+
+        from metaculus_bot.fallback_openrouter import FreeTierChainLlm
+
+        async def fake_invoke(self, prompt, system_prompt=None):
+            raise RuntimeError(f"{self.model} overloaded")
+
+        monkeypatch.setattr(GeneralLlm, "invoke", fake_invoke)
+        llm = FreeTierChainLlm(models=["gemini/gemini-a", "gemini/gemini-b"], role="parser")
+        with pytest.raises(RuntimeError, match="gemini-b overloaded"):
+            await llm.invoke("q")
+
+    def test_every_chain_model_names_a_known_free_provider(self):
+        from metaculus_bot.constants import FREE_FORECASTER_CHAINS, FREE_PROVIDER_KEY_ENVS, FREE_UTILITY_CHAIN
+
+        for chain in [*FREE_FORECASTER_CHAINS.values(), FREE_UTILITY_CHAIN]:
+            for model in chain:
+                assert model.split("/", 1)[0] in FREE_PROVIDER_KEY_ENVS
