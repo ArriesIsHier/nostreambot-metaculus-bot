@@ -194,6 +194,8 @@ def check_fall_cup_reminder(logger: logging.Logger | None = None, today: date | 
 load_environment()  # early, so ASKNEWS_* values are read correctly at import time in local runs
 
 DEFAULT_MAX_CONCURRENT_RESEARCH: int = 6  # conservative for AskNews; adjust after observing rate limits
+# Fork: free tiers rate-limit per minute, so free mode researches (and so forecasts) two questions at a time.
+FREE_MODE_MAX_CONCURRENT_RESEARCH: int = 2
 
 BENCHMARK_BATCH_SIZE: int = 4  # modest, to balance concurrency against provider rate limits
 
@@ -566,30 +568,32 @@ FREE_PROVIDER_KEY_ENVS: dict[str, str] = {
     "cerebras": CEREBRAS_API_KEY_ENV,
 }
 # Per roster slot, models in preference order; only providers whose key is set are kept. The heads
-# differ for every key combination, so the comment's per-model bullets stay distinct.
+# differ for every key combination, so the comment's per-model bullets stay distinct. Groq sits last
+# everywhere: its free tier caps tokens per minute (about 8k on gpt-oss), below one forecaster
+# prompt plus its output, so it is a last resort rather than a slot.
 FREE_FORECASTER_CHAINS: dict[str, tuple[str, ...]] = {
     "openai": (
         "gemini/gemini-3.8-flash",
-        "groq/minimaxai/minimax-m2.7",
         "cerebras/gpt-oss-120b",
-        "groq/openai/gpt-oss-120b",
         "gemini/gemini-3.7-flash",
         "gemini/gemini-3.6-flash",
+        "groq/openai/gpt-oss-120b",
+        "groq/minimaxai/minimax-m2.7",
     ),
     "anthropic": (
-        "groq/minimaxai/minimax-m2.7",
         "gemini/gemini-3.7-flash",
-        "cerebras/gpt-oss-120b",
-        "groq/openai/gpt-oss-120b",
         "gemini/gemini-3.6-flash",
+        "cerebras/gpt-oss-120b",
         "gemini/gemini-3.8-flash",
+        "groq/minimaxai/minimax-m2.7",
+        "groq/openai/gpt-oss-120b",
     ),
     "google": (
         "cerebras/gpt-oss-120b",
-        "groq/openai/gpt-oss-120b",
         "gemini/gemini-3.6-flash",
         "gemini/gemini-3.7-flash",
         "gemini/gemini-3.8-flash",
+        "groq/openai/gpt-oss-120b",
     ),
 }
 # Parser, market ranker (prompts up to ~35k tokens), page digest, classifiers: Gemini first for
