@@ -889,6 +889,17 @@ CRPS and is no better than median on binary.
 
 ## GitHub Actions workflows
 
+> **ArriesIsHier fork (2026-10-02).** Where this fork differs from the upstream text below:
+> only `run_bot_on_tournament.yaml` keeps a `schedule:` block; MiniBench, the Metaculus Cup and
+> Mantic are `workflow_dispatch` only. The fork runs on `METACULUS_TOKEN` plus the donated
+> `OAI_ANTH_OPENROUTER_KEY`; `GEMINI_SEARCH_ENABLED` and `RESOLUTION_SOURCE_URL_CONTEXT_ENABLED`
+> evaluate to `'true'` only when `secrets.GEMINI_API_KEY` exists, and `GAP_FILL_V2_ENABLED` only
+> when `secrets.exa_key` also exists. The repository variable `LEAN_MODE=true` turns off both
+> gap-fill passes. The Google forecaster slot is `gemini-3.8-flash` (donated key), not the
+> personal-key-pinned `gemini-3.1-pro-preview`. `scripts/cronjob_dispatch_setup.py` dispatches
+> `ArriesIsHier/nostreambot-metaculus-bot` with only the tournament job enabled. For `gh`
+> commands use `--repo ArriesIsHier/nostreambot-metaculus-bot`.
+
 Six bot workflows live in `.github/workflows/`. They share the same setup
 (checkout, `uv sync --no-dev --frozen`, install Playwright Chromium), the same env
 block (the Mantic one differs only in its keys; see "Mantic" below), and a `timeout-minutes` job cap

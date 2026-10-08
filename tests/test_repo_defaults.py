@@ -1,4 +1,4 @@
-"""Pin operational GitHub clients to the canonical repository."""
+"""Pin operational GitHub clients to this fork (ArriesIsHier), not upstream No-Stream."""
 
 from scripts import (
     backfill_research_from_logs,
@@ -11,7 +11,7 @@ from scripts import (
 )
 from scripts.research_sync import verify_completeness
 
-CANONICAL_REPOSITORY = "No-Stream/nostreambot-metaculus-bot"
+CANONICAL_REPOSITORY = "ArriesIsHier/nostreambot-metaculus-bot"
 
 
 def test_operational_github_defaults_use_the_canonical_repository() -> None:

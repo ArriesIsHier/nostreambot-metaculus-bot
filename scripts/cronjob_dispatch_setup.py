@@ -37,7 +37,7 @@ GH_DISPATCH_TOKEN_PLACEHOLDER = "<GH_DISPATCH_TOKEN>"  # noqa: S105  # a placeho
 
 CRONJOB_API_BASE = "https://api.cron-job.org"
 GITHUB_DISPATCH_URL = (
-    "https://api.github.com/repos/No-Stream/nostreambot-metaculus-bot/actions/workflows/{workflow}/dispatches"
+    "https://api.github.com/repos/ArriesIsHier/nostreambot-metaculus-bot/actions/workflows/{workflow}/dispatches"
 )
 GITHUB_DISPATCH_BODY = '{"ref":"main"}'
 GITHUB_API_VERSION = "2022-11-28"
@@ -73,8 +73,9 @@ class DispatchJob:
 # Two firings an hour per workflow, minutes staggered so two full bot runs never share the runners and research quotas.
 DISPATCH_JOBS: tuple[DispatchJob, ...] = (
     DispatchJob("metaculus-bot dispatch: tournament", "run_bot_on_tournament.yaml", (2, 32), enabled=True),
-    DispatchJob("metaculus-bot dispatch: metaculus cup", "run_bot_on_metaculus_cup.yaml", (12, 42), enabled=True),
-    DispatchJob("metaculus-bot dispatch: mantic", MANTIC_WORKFLOW_FILE, (1, 16), enabled=True),
+    # Fork (ArriesIsHier): the Cup pays no bot prizes and there is no Mantic token, so both stay disabled.
+    DispatchJob("metaculus-bot dispatch: metaculus cup", "run_bot_on_metaculus_cup.yaml", (12, 42), enabled=False),
+    DispatchJob("metaculus-bot dispatch: mantic", MANTIC_WORKFLOW_FILE, (1, 16), enabled=False),
 )
 
 
