@@ -64,6 +64,8 @@ GDELT_DOC_URL = (
 TAVILY_SEARCH_URL = "https://api.tavily.com/search"
 # GDELT asks for at most one request per 5 seconds per client.
 GDELT_MIN_INTERVAL_S = 5.5
+GDELT_ATTEMPTS = 2
+GDELT_RETRY_BACKOFF_S = 6.0
 
 _SPACE_RE = re.compile(r"\s+")
 # Question-shaped words that only dilute a news query.
@@ -203,6 +205,7 @@ async def author_queries(title: str) -> list[str]:
 
 async def _read_text(resp: aiohttp.ClientResponse, max_bytes: int) -> str | None:
     if resp.status != 200:
+        logger.info("FREE_NEWS: %s answered HTTP %s", resp.url.host, resp.status)
         return None
     body = await read_body_capped(resp, max_bytes=max_bytes, label=PROVIDER_NAME)
     if body is None:
@@ -252,17 +255,22 @@ _GDELT_PACER = _GdeltPacer()
 async def search_gdelt(session: aiohttp.ClientSession, query: str) -> list[NewsItem]:
     """GDELT DOC artlist for ``query``, paced to GDELT's published rate limit."""
     url = GDELT_DOC_URL.format(query=quote(query), limit=FREE_NEWS_GDELT_MAX_RECORDS, timespan=FREE_NEWS_GDELT_TIMESPAN)
-    async with _GDELT_PACER.lock():
-        await _GDELT_PACER.wait_turn()
-        text = await _get_text(session, url, FREE_NEWS_MAX_FEED_BYTES)
-    if not text:
-        return []
-    try:
-        return parse_gdelt_articles(json.loads(text))
-    except json.JSONDecodeError:
-        # GDELT answers a rate-limit or a malformed query with plain text, not JSON.
-        logger.info("FREE_NEWS: GDELT returned non-JSON for %r: %s", query, text[:120])
-        return []
+    for attempt in range(1, GDELT_ATTEMPTS + 1):
+        async with _GDELT_PACER.lock():
+            await _GDELT_PACER.wait_turn()
+            text = await _get_text(session, url, FREE_NEWS_MAX_FEED_BYTES)
+        if text:
+            try:
+                return parse_gdelt_articles(json.loads(text))
+            except json.JSONDecodeError:
+                # GDELT answers a rate-limit or a malformed query with plain text, not JSON.
+                logger.info("FREE_NEWS: GDELT returned non-JSON for %r: %s", query, text[:120])
+                if "limit requests" not in text:
+                    return []
+        if attempt < GDELT_ATTEMPTS:
+            # A shared runner IP can trip GDELT's per-client limit; one paced retry usually clears it.
+            await asyncio.sleep(GDELT_RETRY_BACKOFF_S)
+    return []
 
 
 async def search_tavily(session: aiohttp.ClientSession, query: str, api_key: str) -> list[NewsItem]:
