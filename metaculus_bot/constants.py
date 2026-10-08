@@ -575,23 +575,21 @@ FREE_FORECASTER_CHAINS: dict[str, tuple[str, ...]] = {
     "openai": (
         "gemini/gemini-3.8-flash",
         "cerebras/gpt-oss-120b",
+        "cerebras/qwen-3.8-27b",
         "gemini/gemini-3.7-flash",
-        "gemini/gemini-3.6-flash",
         "groq/openai/gpt-oss-120b",
-        "groq/minimaxai/minimax-m2.7",
     ),
     "anthropic": (
+        "cerebras/qwen-3.8-27b",
         "gemini/gemini-3.7-flash",
-        "gemini/gemini-3.6-flash",
         "cerebras/gpt-oss-120b",
-        "gemini/gemini-3.8-flash",
-        "groq/minimaxai/minimax-m2.7",
-        "groq/openai/gpt-oss-120b",
+        "gemini/gemini-3.6-flash",
+        "groq/qwen/qwen3.8-27b",
     ),
     "google": (
         "cerebras/gpt-oss-120b",
         "gemini/gemini-3.6-flash",
-        "gemini/gemini-3.7-flash",
+        "cerebras/qwen-3.8-27b",
         "gemini/gemini-3.8-flash",
         "groq/openai/gpt-oss-120b",
     ),
@@ -600,11 +598,14 @@ FREE_FORECASTER_CHAINS: dict[str, tuple[str, ...]] = {
 # its 1M context, the other providers only as a last resort.
 FREE_UTILITY_CHAIN: tuple[str, ...] = (
     "gemini/gemini-3.5-flash-lite",
-    "gemini/gemini-3.6-flash",
-    "gemini/gemini-3.8-flash",
     "cerebras/gpt-oss-120b",
-    "groq/openai/gpt-oss-120b",
+    "gemini/gemini-3.6-flash",
+    "cerebras/qwen-3.8-27b",
+    "gemini/gemini-3.8-flash",
 )
+# Free tiers limit per minute: when a whole chain fails, wait this long and walk it once more.
+FREE_CHAIN_RETRY_PAUSE_S: float = 20.0
+FREE_CHAIN_PASSES: int = 2
 # Cerebras' free tier caps context at 65k tokens in total, so non-Gemini outputs are capped.
 FREE_NON_GEMINI_MAX_TOKENS: int = 16_000
 # gpt-oss takes an explicit reasoning effort; the Gemini models run at their default thinking.

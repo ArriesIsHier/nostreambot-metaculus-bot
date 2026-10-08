@@ -1854,13 +1854,24 @@ class TestFreeTierMode:
 
         from metaculus_bot.fallback_openrouter import FreeTierChainLlm
 
+        calls: list[str] = []
+        pauses: list[float] = []
+
         async def fake_invoke(self, prompt, system_prompt=None):
+            calls.append(self.model)
             raise RuntimeError(f"{self.model} overloaded")
 
+        async def fake_sleep(seconds):
+            pauses.append(seconds)
+
         monkeypatch.setattr(GeneralLlm, "invoke", fake_invoke)
+        monkeypatch.setattr("metaculus_bot.fallback_openrouter.asyncio.sleep", fake_sleep)
         llm = FreeTierChainLlm(models=["gemini/gemini-a", "gemini/gemini-b"], role="parser")
         with pytest.raises(RuntimeError, match="gemini-b overloaded"):
             await llm.invoke("q")
+        # Two passes over the chain with one pause between them.
+        assert calls == ["gemini/gemini-a", "gemini/gemini-b"] * 2
+        assert len(pauses) == 1
 
     def test_every_chain_model_names_a_known_free_provider(self):
         from metaculus_bot.constants import FREE_FORECASTER_CHAINS, FREE_PROVIDER_KEY_ENVS, FREE_UTILITY_CHAIN
