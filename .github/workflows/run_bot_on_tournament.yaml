@@ -92,7 +92,8 @@ jobs:
         # Store under Settings --> Secrets and variables --> Actions
         env:
           # Fork (ArriesIsHier): OpenAI native search and gap-fill v1 need an OpenRouter key; Gemini
-          # grounded search runs only in free mode (2.5 Flash, free tier); gap-fill v2 needs exa_key too.
+          # grounded search is off (paid-tier only for this
+          # fork's free key; the free 2.5 models are closed to new users); gap-fill v2 needs exa_key too.
           # Repository variable LEAN_MODE=true drops both gap-fill passes to stretch credits.
           # Unbuffered stdout/stderr so log lines stream in real time and nothing
           # is lost if the run crashes before a buffer flush.
@@ -134,7 +135,7 @@ jobs:
           # (constants.free_gemini_mode); litellm's gemini/ provider reads GEMINI_API_KEY.
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           FREE_GEMINI_MODE: "${{ secrets.OAI_ANTH_OPENROUTER_KEY == '' && secrets.OPENROUTER_API_KEY == '' && secrets.GEMINI_API_KEY != '' && 'true' || 'false' }}"
-          GEMINI_SEARCH_ENABLED: "${{ secrets.OAI_ANTH_OPENROUTER_KEY == '' && secrets.OPENROUTER_API_KEY == '' && secrets.GEMINI_API_KEY != '' && 'true' || 'false' }}"
+          GEMINI_SEARCH_ENABLED: 'false'
           # OpenRouter Gemini routing (forecaster, stacker, summarizer when the
           # ensemble includes a Google model). When 'true' (default since
           # 2026-06-16), Gemini OpenRouter calls prefer the Metaculus-donated

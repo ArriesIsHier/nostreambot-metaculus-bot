@@ -550,24 +550,20 @@ GEMINI_SEARCH_DEFAULT_MODEL: str = "gemini-3.8-flash"
 # --- Free Gemini mode (ArriesIsHier fork) ---
 # With no OpenRouter key at all, every LLM role runs on the Google AI Studio FREE tier (no
 # billing) through litellm's gemini/ provider, which reads GEMINI_API_KEY. Free-tier facts read
-# from ai.google.dev/gemini-api/docs/pricing on 2026-10-08: tokens are free on gemini-3.8-flash,
-# gemini-3.7-flash, gemini-3.5-flash-lite and gemini-2.5-pro; Google Search grounding is free
-# only on gemini-2.5-flash / 2.5-flash-lite (500 requests/day, shared), and "Not available" on
-# every Gemini 3 model's free tier.
+# from ai.google.dev/gemini-api/docs/pricing on 2026-10-08 (tokens free on the 3.5-3.8 Flash
+# family; Google Search grounding "Not available" on every Gemini 3 free tier) and checked live
+# the same day: gemini-2.5-pro and gemini-2.5-flash answer 404 "no longer available to new
+# users", so the free key has no grounded search at all and grounded search stays off.
 FREE_GEMINI_MODE_ENV: str = "FREE_GEMINI_MODE"
 GEMINI_API_KEY_ENV: str = "GEMINI_API_KEY"
 # One distinct free model per roster vendor slot, so the comment's per-model bullets stay distinct.
 FREE_GEMINI_FORECASTER_MODELS: dict[str, str] = {
     "openai": "gemini/gemini-3.8-flash",
-    "anthropic": "gemini/gemini-2.5-pro",
+    "anthropic": "gemini/gemini-3.6-flash",
     "google": "gemini/gemini-3.7-flash",
 }
 # Parser, market ranker, page digest, classifiers: capability-saturated tasks.
 FREE_GEMINI_UTILITY_MODEL: str = "gemini/gemini-3.5-flash-lite"
-# The only Gemini model with free grounded search.
-FREE_GEMINI_SEARCH_MODEL: str = "gemini-2.5-flash"
-# Gemini 2.x takes a thinking budget, not the Gemini 3 thinking_level field.
-GEMINI_2_MODEL_PREFIX: str = "gemini-2."
 # 6 min: a 10-round AFC chain takes 150-200 s. Receipt: docs/constants.md "GEMINI_SEARCH_TIMEOUT".
 GEMINI_SEARCH_TIMEOUT: int = 360
 # Per-call wall for resolving all cited search links; use the remaining search wall. Receipt: docs/constants.md "GEMINI_SEARCH_LINK_RESOLVE_TIMEOUT_S".

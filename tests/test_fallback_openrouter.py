@@ -1790,15 +1790,3 @@ class TestFreeGeminiMode:
 
         for model in [*FREE_GEMINI_FORECASTER_MODELS.values(), FREE_GEMINI_UTILITY_MODEL]:
             assert model.startswith("gemini/gemini-")
-
-
-class TestFreeGeminiSearchModel:
-    def test_free_mode_searches_on_the_free_grounded_model(self, monkeypatch):
-        from metaculus_bot.constants import FREE_GEMINI_SEARCH_MODEL, GEMINI_SEARCH_DEFAULT_MODEL
-        from metaculus_bot.research.gemini_search import _resolve_model
-
-        monkeypatch.delenv("GEMINI_SEARCH_MODEL", raising=False)
-        monkeypatch.setenv("FREE_GEMINI_MODE", "true")
-        assert _resolve_model(None) == FREE_GEMINI_SEARCH_MODEL
-        monkeypatch.setenv("FREE_GEMINI_MODE", "false")
-        assert _resolve_model(None) == GEMINI_SEARCH_DEFAULT_MODEL
