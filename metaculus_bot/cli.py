@@ -18,6 +18,7 @@ from metaculus_bot.constants import (
     MANTIC_API_BASE_URL,
     MANTIC_TOURNAMENT_END_DATE,
     MANTIC_TOURNAMENT_ID,
+    MARKET_PULSE_ID,
     METACULUS_CUP_ID,
     PERSIST_RESEARCH_ENABLED_ENV,
     PLATFORM_MANTIC,
@@ -69,7 +70,9 @@ from metaculus_bot.research.persistence import ResearchPersistenceWriter
 logger = logging.getLogger(__name__)
 
 
-RunMode = Literal["tournament", "minibench", "quarterly_cup", "metaculus_cup", "test_questions", "mantic"]
+RunMode = Literal[
+    "tournament", "minibench", "quarterly_cup", "metaculus_cup", "market_pulse", "test_questions", "mantic"
+]
 
 
 class CliArgs(NamedTuple):
@@ -302,6 +305,10 @@ def _question_source(
         # Regularly open questions; to not risk explosive spend, we won't update preds.
         template_bot.skip_previously_forecasted_questions = True
         return _tournament_source(template_bot, METACULUS_CUP_ID, only_posts)
+    if run_mode == "market_pulse":
+        # Spot-scored at the community-prediction reveal; one forecast per question, made as soon as it opens.
+        template_bot.skip_previously_forecasted_questions = True
+        return _tournament_source(template_bot, MARKET_PULSE_ID, only_posts)
     if run_mode == "mantic":
         # Mantic's platform via the ManticClient main injects; to not risk explosive spend, we won't update preds.
         template_bot.skip_previously_forecasted_questions = True
@@ -342,6 +349,8 @@ def persisted_tournament_id(run_mode: RunMode) -> str:
         return str(MetaculusApi.CURRENT_MINIBENCH_ID)
     if run_mode in ("quarterly_cup", "metaculus_cup"):
         return METACULUS_CUP_ID
+    if run_mode == "market_pulse":
+        return MARKET_PULSE_ID
     if run_mode == "mantic":
         return MANTIC_TOURNAMENT_ID
     raise ValueError(f"Invalid run mode: {run_mode}")

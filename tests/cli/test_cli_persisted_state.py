@@ -18,6 +18,7 @@ from metaculus_bot.cli import RunMode, persisted_platform, persisted_tournament_
 from metaculus_bot.cli import main as cli_main
 from metaculus_bot.constants import (
     MANTIC_TOURNAMENT_ID,
+    MARKET_PULSE_ID,
     METACULUS_CUP_ID,
     PERSIST_RESEARCH_ENABLED_ENV,
     TOURNAMENT_ID,
@@ -41,6 +42,7 @@ class TestPersistedTournamentId:
         "minibench": str(MetaculusApi.CURRENT_MINIBENCH_ID),
         "quarterly_cup": METACULUS_CUP_ID,
         "metaculus_cup": METACULUS_CUP_ID,
+        "market_pulse": MARKET_PULSE_ID,
         "mantic": MANTIC_TOURNAMENT_ID,
         # No label fits the evergreen set; retained so the archive's existing test-run records stay comparable.
         "test_questions": TOURNAMENT_ID,
@@ -56,8 +58,10 @@ class TestPersistedTournamentId:
 
     def test_the_competitions_do_not_share_a_label(self) -> None:
         """The bot tournament, the cup and the Mantic tournament must stay distinguishable in the archive."""
-        labels = {persisted_tournament_id(run_mode) for run_mode in ("tournament", "metaculus_cup", "mantic")}
-        assert len(labels) == 3, labels
+        labels = {
+            persisted_tournament_id(run_mode) for run_mode in ("tournament", "metaculus_cup", "market_pulse", "mantic")
+        }
+        assert len(labels) == 4, labels
 
     def test_an_unknown_mode_raises_rather_than_mislabelling(self) -> None:
         with pytest.raises(ValueError, match="Invalid run mode"):

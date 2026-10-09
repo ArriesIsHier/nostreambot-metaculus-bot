@@ -118,6 +118,7 @@ class TestEveryJobIsCapped:
             ".github/workflows/claude.yml",
             ".github/workflows/fetch_diagnostic.yaml",
             ".github/workflows/run_bot_on_mantic.yaml",
+            ".github/workflows/run_bot_on_market_pulse.yaml",
             ".github/workflows/run_bot_on_metaculus_cup.yaml",
             ".github/workflows/run_bot_on_minibench.yaml",
             ".github/workflows/run_bot_on_tournament.yaml",
@@ -300,9 +301,10 @@ class TestScheduledBotCadence:
         # Derived from the files, then pinned: the two test workflows are dispatch-only
         # (spending is the operator's choice), and a new cron on one of them would show up
         # here rather than silently starting to publish on a schedule.
-        # Fork (ArriesIsHier): the two prize-paying bot tournaments are scheduled; Mantic and
-        # the Cup are dispatch-only.
+        # Fork (ArriesIsHier): the prize-paying Metaculus competitions open to bots are
+        # scheduled (the two bot tournaments and Market Pulse); Mantic and the Cup are dispatch-only.
         assert sorted(self.scheduled) == [
+            ".github/workflows/run_bot_on_market_pulse.yaml",
             ".github/workflows/run_bot_on_minibench.yaml",
             ".github/workflows/run_bot_on_tournament.yaml",
         ]

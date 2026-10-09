@@ -32,6 +32,9 @@ research stack and its Summer 2026 result (15th of 277) belongs to them. This fo
 - **Schedules.** The tournament and MiniBench workflows run on a schedule, and cron-job.org
   dispatches them more reliably (every 10 and 15 minutes). The Metaculus Cup and Mantic are
   manual-dispatch only. `scripts/cronjob_dispatch_setup.py` dispatches this fork.
+- **Market Pulse.** `--mode market_pulse` forecasts Metaculus' quarterly Market Pulse Challenge
+  (`MARKET_PULSE_ID`, currently `market-pulse-26q4`), whose rules keep bots prize-eligible;
+  `run_bot_on_market_pulse.yaml` runs it twice an hour. Re-point the slug each quarter.
 
 ### Setup checklist
 
