@@ -27,6 +27,11 @@ TOURNAMENT_HARD_STOP_WEEKS: int = 2  # ~2 weeks of wiggle room past close before
 # The undated `metaculus-cup` slug now answers HTTP 400. Receipt: docs/constants.md "METACULUS_CUP_ID".
 METACULUS_CUP_ID: str = "metaculus-cup-fall-2026"
 
+# Fork (ArriesIsHier): Metaculus' quarterly Market Pulse Challenge, $7,500 pool, the one Metaculus
+# competition beside the bot tournaments whose rules keep bots prize-eligible. The tournaments page
+# listed "Market Pulse Challenge 26Q4" on 2026-10-09; the slug follows market-pulse-26q3's pattern.
+MARKET_PULSE_ID: str = "market-pulse-26q4"
+
 # Mantic's Crucible competition, a Metaculus fork. Receipt: docs/constants.md "MANTIC_HOST".
 MANTIC_HOST: str = "competitions.mantic.com"
 MANTIC_SITE_URL: str = f"https://{MANTIC_HOST}"

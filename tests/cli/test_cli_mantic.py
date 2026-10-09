@@ -32,6 +32,7 @@ from metaculus_bot.constants import (
     MANTIC_API_BASE_URL,
     MANTIC_TOKEN_ENV,
     MANTIC_TOURNAMENT_ID,
+    MARKET_PULSE_ID,
     METACULUS_CUP_ID,
     TOURNAMENT_ID,
 )
@@ -150,6 +151,7 @@ class TestOnlyPostsFilter:
         "minibench": MetaculusApi.CURRENT_MINIBENCH_ID,
         "quarterly_cup": METACULUS_CUP_ID,
         "metaculus_cup": METACULUS_CUP_ID,
+        "market_pulse": MARKET_PULSE_ID,
         "mantic": MANTIC_TOURNAMENT_ID,
     }
 
