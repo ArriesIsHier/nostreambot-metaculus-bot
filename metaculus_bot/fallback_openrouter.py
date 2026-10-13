@@ -589,8 +589,12 @@ class FreeTierChainLlm(GeneralLlm):
         for attempt in range(1, FREE_CHAIN_PASSES + 1):
             for llm in [self, *self._fallback_llms]:
                 try:
-                    answer = await (
-                        super().invoke(prompt, system_prompt) if llm is self else llm.invoke(prompt, system_prompt)
+                    # A wall clock, not just the transport timeout: httpx's timeout restarts on every byte,
+                    # and OpenRouter streams keep-alive bytes while a free model queues, so one Nemotron
+                    # call held two Q46141 slots past FORECASTER_SOFT_DEADLINE (2026-10-12).
+                    answer = await asyncio.wait_for(
+                        super().invoke(prompt, system_prompt) if llm is self else llm.invoke(prompt, system_prompt),
+                        timeout=FREE_MODEL_TIMEOUT_S,
                     )
                 except Exception as error:  # noqa: BLE001  # HARNESS-SCAN-EXEMPT-broad-except  # next model in the chain, last error re-raised below
                     last_error = error
