@@ -1943,6 +1943,24 @@ class TestFreeTierMode:
         assert len(pauses) == 1
 
     @pytest.mark.asyncio
+    async def test_a_model_that_never_answers_is_abandoned_at_the_wall_clock(self, monkeypatch):
+        import asyncio
+
+        from forecasting_tools import GeneralLlm
+
+        from metaculus_bot.fallback_openrouter import FreeTierChainLlm
+
+        async def fake_invoke(self, prompt, system_prompt=None):
+            if self.model == "openrouter/vendor/slow:free":
+                await asyncio.Event().wait()  # a stream that keeps the socket alive and never finishes
+            return "answer"
+
+        monkeypatch.setattr(GeneralLlm, "invoke", fake_invoke)
+        monkeypatch.setattr("metaculus_bot.fallback_openrouter.FREE_MODEL_TIMEOUT_S", 0.05)
+        llm = FreeTierChainLlm(models=["openrouter/vendor/slow:free", "gemini/gemini-b"], role="parser")
+        assert await asyncio.wait_for(llm.invoke("q"), timeout=5) == "answer"
+
+    @pytest.mark.asyncio
     async def test_a_fallback_logs_the_first_line_of_the_error(self, monkeypatch, caplog):
         from forecasting_tools import GeneralLlm
 
