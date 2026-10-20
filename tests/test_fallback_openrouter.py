@@ -1813,6 +1813,50 @@ class TestFreeTierMode:
             "cerebras/qwen-3.8-27b",
         ]
 
+    def test_a_downed_head_falls_back_to_a_model_no_other_slot_serves(self, monkeypatch):
+        """Rotating one shared list sent a downed head to the next slot's head, doubling it up."""
+        from itertools import combinations
+
+        from metaculus_bot.constants import FREE_PROVIDER_KEY_ENVS, FREE_TIER_FORECASTER_MODELS
+        from metaculus_bot.fallback_openrouter import available_free_models, free_forecaster_chain
+
+        envs = list(FREE_PROVIDER_KEY_ENVS.values())
+        checked = 0
+        for size in range(1, len(envs) + 1):
+            for keys in combinations(envs, size):
+                self._keys(monkeypatch, *keys)
+                if len(available_free_models(FREE_TIER_FORECASTER_MODELS)) < 6:
+                    continue
+                chains = [free_forecaster_chain(slot) for slot in range(3)]
+                heads = {chain[0] for chain in chains}
+                first_fallbacks = [chain[1] for chain in chains]
+                assert len(set(first_fallbacks)) == 3, keys
+                assert not heads & set(first_fallbacks), keys
+                assert all(set(chain[-2:]) == heads - {chain[0]} for chain in chains), keys
+                checked += 1
+        assert checked > 0
+
+    def test_the_deployed_keys_give_each_slot_its_own_first_fallback(self, monkeypatch):
+        from metaculus_bot.fallback_openrouter import free_forecaster_chain
+
+        self._keys(monkeypatch, "GEMINI_API_KEY", "CEREBRAS_API_KEY", "GROQ_API_KEY", "OPENROUTER_FREE_KEY")
+        assert [free_forecaster_chain(slot)[:2] for slot in range(3)] == [
+            ["gemini/gemini-3.8-flash", "cerebras/qwen-3.8-27b"],
+            ["openrouter/nvidia/nemotron-3-ultra-550b-a55b:free", "gemini/gemini-3.7-flash"],
+            ["cerebras/gpt-oss-120b", "gemini/gemini-3.6-flash"],
+        ]
+
+    def test_with_no_reserve_the_chain_is_a_plain_rotation(self, monkeypatch):
+        from metaculus_bot.fallback_openrouter import free_forecaster_chain
+
+        monkeypatch.setattr(fallback_openrouter, "FREE_TIER_FORECASTER_MODELS", ("gemini/a", "gemini/b", "gemini/c"))
+        self._keys(monkeypatch, "GEMINI_API_KEY")
+        assert [free_forecaster_chain(slot) for slot in range(3)] == [
+            ["gemini/a", "gemini/b", "gemini/c"],
+            ["gemini/b", "gemini/c", "gemini/a"],
+            ["gemini/c", "gemini/a", "gemini/b"],
+        ]
+
     def test_chains_keep_only_providers_with_a_key(self, monkeypatch):
         from metaculus_bot.fallback_openrouter import available_free_models
 
