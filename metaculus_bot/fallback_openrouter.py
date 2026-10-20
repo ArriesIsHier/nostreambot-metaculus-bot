@@ -628,20 +628,25 @@ def disable_openai_sdk_retries() -> None:
 
 
 def free_forecaster_chain(slot: int) -> list[str]:
-    """Roster slot ``slot``'s chain: the available forecaster models, rotated to start at the slot-th.
+    """Roster slot ``slot``'s chain: its own head, then the reserve models, then the other heads.
 
-    Rotation keeps the heads distinct whenever at least as many models as slots are available,
-    whatever keys are set, and still lets every slot fall back through every other model.
+    The heads are the first available models, one per slot, so they stay distinct whatever keys
+    are set. Each slot walks the reserve from its own offset and reaches the other slots' heads
+    last, so a slot whose head is down lands on a model no other slot is serving rather than
+    doubling one up, and still falls back through every available model.
     """
     models = available_free_models(FREE_TIER_FORECASTER_MODELS)
-    start = slot % len(models)
-    return models[start:] + models[:start]
+    n_heads = min(len(FREE_TIER_FORECASTER_SLOTS), len(models))
+    heads, reserve = models[:n_heads], models[n_heads:]
+    index = slot % n_heads
+    start = slot % len(reserve) if reserve else 0
+    return [heads[index], *reserve[start:], *reserve[:start], *heads[index + 1 :], *heads[:index]]
 
 
 def build_free_tier_llm(*, role: str | None = None, **kwargs: Any) -> GeneralLlm:
     """The free-mode ``GeneralLlm`` for ``role``, chosen by role rather than by model.
 
-    A roster slot (``forecaster:<vendor>``) gets its rotation of ``FREE_TIER_FORECASTER_MODELS``;
+    A roster slot (``forecaster:<vendor>``) gets its ``free_forecaster_chain`` of ``FREE_TIER_FORECASTER_MODELS``;
     every other role gets ``FREE_UTILITY_CHAIN``.
     """
     vendor = role.split(":", 1)[1] if role and role.startswith("forecaster:") else ""
