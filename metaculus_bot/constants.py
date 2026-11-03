@@ -586,31 +586,35 @@ FREE_PROVIDER_KEY_ENVS: dict[str, str] = {
 # Forecaster models, strongest first, providers interleaved so a failing provider's next model is
 # usually elsewhere. Only models whose key is set are kept, and roster slot i starts its chain at
 # the i-th of them (FREE_TIER_FORECASTER_SLOTS), so the three heads differ whenever three models are
-# available and each slot falls back through all the rest. Groq sits last: its free tier caps
-# tokens per minute (about 8k on gpt-oss), below one forecaster prompt plus its output.
+# available and each slot falls back through all the rest. Cerebras answered "Payment required" on
+# every call from 2026-10-27, so gpt-oss is served from Groq (13 of 19 tournament calls answered,
+# 2026-10-27..11-03, the rest too large or rate limited) and Cerebras waits at the end in case its
+# free tier returns. Gemini's free tier allows 20 requests a day per model.
 FREE_TIER_FORECASTER_MODELS: tuple[str, ...] = (
     "gemini/gemini-3.8-flash",
     "openrouter/nvidia/nemotron-3-ultra-550b-a55b:free",
-    "cerebras/gpt-oss-120b",
+    "groq/openai/gpt-oss-120b",
     "mistral/mistral-large-latest",
-    "cerebras/qwen-3.8-27b",
     "gemini/gemini-3.7-flash",
     "mistral/mistral-medium-latest",
     "gemini/gemini-3.6-flash",
-    "groq/openai/gpt-oss-120b",
     "groq/qwen/qwen3.8-27b",
+    "cerebras/gpt-oss-120b",
+    "cerebras/qwen-3.8-27b",
 )
 FREE_TIER_FORECASTER_SLOTS: dict[str, int] = {"openai": 0, "anthropic": 1, "google": 2}
 # Parser, market ranker (prompts up to ~35k tokens), page digest, classifiers: Gemini first for
 # its 1M context, the other providers only as a last resort.
-# OpenRouter's daily request cap is kept for the forecasters.
+# OpenRouter's daily request cap is kept for the forecasters, and Groq comes before the forecasters'
+# Gemini models so a Flash-Lite outage does not spend their 20 requests a day.
 FREE_UTILITY_CHAIN: tuple[str, ...] = (
     "gemini/gemini-3.5-flash-lite",
-    "cerebras/gpt-oss-120b",
+    "groq/openai/gpt-oss-120b",
     "mistral/mistral-medium-latest",
     "gemini/gemini-3.6-flash",
-    "cerebras/qwen-3.8-27b",
     "gemini/gemini-3.8-flash",
+    "cerebras/gpt-oss-120b",
+    "cerebras/qwen-3.8-27b",
 )
 # Free tiers limit per minute: when a whole chain fails, wait this long and walk it once more.
 FREE_CHAIN_RETRY_PAUSE_S: float = 20.0

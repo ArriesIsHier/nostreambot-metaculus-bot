@@ -1803,14 +1803,14 @@ class TestFreeTierMode:
             assert chain[0] == available[slot]
             assert sorted(chain) == sorted(available)
 
-    def test_the_shipped_keys_put_gemini_gpt_oss_and_qwen_at_the_heads(self, monkeypatch):
+    def test_without_openrouter_the_heads_are_gemini_and_groq_gpt_oss(self, monkeypatch):
         from metaculus_bot.fallback_openrouter import free_forecaster_chain
 
         self._keys(monkeypatch, "GEMINI_API_KEY", "CEREBRAS_API_KEY", "GROQ_API_KEY")
         assert [free_forecaster_chain(slot)[0] for slot in range(3)] == [
             "gemini/gemini-3.8-flash",
-            "cerebras/gpt-oss-120b",
-            "cerebras/qwen-3.8-27b",
+            "groq/openai/gpt-oss-120b",
+            "gemini/gemini-3.7-flash",
         ]
 
     def test_a_downed_head_falls_back_to_a_model_no_other_slot_serves(self, monkeypatch):
@@ -1841,10 +1841,27 @@ class TestFreeTierMode:
 
         self._keys(monkeypatch, "GEMINI_API_KEY", "CEREBRAS_API_KEY", "GROQ_API_KEY", "OPENROUTER_FREE_KEY")
         assert [free_forecaster_chain(slot)[:2] for slot in range(3)] == [
-            ["gemini/gemini-3.8-flash", "cerebras/qwen-3.8-27b"],
-            ["openrouter/nvidia/nemotron-3-ultra-550b-a55b:free", "gemini/gemini-3.7-flash"],
-            ["cerebras/gpt-oss-120b", "gemini/gemini-3.6-flash"],
+            ["gemini/gemini-3.8-flash", "gemini/gemini-3.7-flash"],
+            ["openrouter/nvidia/nemotron-3-ultra-550b-a55b:free", "gemini/gemini-3.6-flash"],
+            ["groq/openai/gpt-oss-120b", "groq/qwen/qwen3.8-27b"],
         ]
+
+    def test_cerebras_waits_behind_every_other_model(self, monkeypatch):
+        """Cerebras answered "Payment required" on every call from 2026-10-27."""
+        from metaculus_bot.constants import FREE_TIER_FORECASTER_MODELS, FREE_UTILITY_CHAIN
+
+        for chain in (FREE_TIER_FORECASTER_MODELS, FREE_UTILITY_CHAIN):
+            providers = [model.split("/", 1)[0] for model in chain]
+            first_cerebras = providers.index("cerebras")
+            assert set(providers[first_cerebras:]) == {"cerebras"}, chain
+
+    def test_utility_falls_to_groq_before_the_forecasters_gemini_models(self):
+        """A Flash-Lite outage must not spend the forecasters' 20 Gemini requests a day."""
+        from metaculus_bot.constants import FREE_UTILITY_CHAIN
+
+        groq = FREE_UTILITY_CHAIN.index("groq/openai/gpt-oss-120b")
+        assert groq < FREE_UTILITY_CHAIN.index("gemini/gemini-3.6-flash")
+        assert groq < FREE_UTILITY_CHAIN.index("gemini/gemini-3.8-flash")
 
     def test_with_no_reserve_the_chain_is_a_plain_rotation(self, monkeypatch):
         from metaculus_bot.fallback_openrouter import free_forecaster_chain
