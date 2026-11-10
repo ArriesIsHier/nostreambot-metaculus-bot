@@ -1755,6 +1755,7 @@ class TestFreeTierMode:
                 monkeypatch.setenv(env, "test-key")
             else:
                 monkeypatch.delenv(env, raising=False)
+        monkeypatch.delenv("FREE_TIER_LANE", raising=False)
 
     def test_off_by_default_keeps_openrouter_routing(self, monkeypatch):
         from metaculus_bot.fallback_openrouter import build_llm_with_openrouter_fallback
@@ -1862,6 +1863,49 @@ class TestFreeTierMode:
         groq = FREE_UTILITY_CHAIN.index("groq/openai/gpt-oss-120b")
         assert groq < FREE_UTILITY_CHAIN.index("gemini/gemini-3.6-flash")
         assert groq < FREE_UTILITY_CHAIN.index("gemini/gemini-3.8-flash")
+
+    def test_the_secondary_lane_never_calls_the_tournament_heads(self, monkeypatch):
+        """A MiniBench round spent every daily quota and left two FutureEval questions unforecast."""
+        from metaculus_bot.constants import FREE_TIER_PRIMARY_ONLY_MODELS, FREE_UTILITY_CHAIN
+        from metaculus_bot.fallback_openrouter import available_free_models, free_forecaster_chain
+
+        self._keys(monkeypatch, "GEMINI_API_KEY", "CEREBRAS_API_KEY", "GROQ_API_KEY", "OPENROUTER_FREE_KEY")
+        monkeypatch.setenv("FREE_TIER_LANE", "secondary")
+        chains = [free_forecaster_chain(slot) for slot in range(3)]
+        assert [chain[0] for chain in chains] == [
+            "gemini/gemini-3.7-flash",
+            "gemini/gemini-3.6-flash",
+            "groq/qwen/qwen3.8-27b",
+        ]
+        for chain in [*chains, available_free_models(FREE_UTILITY_CHAIN)]:
+            assert not FREE_TIER_PRIMARY_ONLY_MODELS & set(chain), chain
+
+    def test_the_primary_lane_keeps_the_tournament_heads(self, monkeypatch):
+        from metaculus_bot.fallback_openrouter import free_forecaster_chain
+
+        self._keys(monkeypatch, "GEMINI_API_KEY", "CEREBRAS_API_KEY", "GROQ_API_KEY", "OPENROUTER_FREE_KEY")
+        monkeypatch.setenv("FREE_TIER_LANE", "primary")
+        assert [free_forecaster_chain(slot)[0] for slot in range(3)] == [
+            "gemini/gemini-3.8-flash",
+            "openrouter/nvidia/nemotron-3-ultra-550b-a55b:free",
+            "groq/openai/gpt-oss-120b",
+        ]
+
+    def test_the_secondary_lane_keeps_the_heads_when_nothing_else_has_a_key(self, monkeypatch):
+        from metaculus_bot.fallback_openrouter import available_free_models
+
+        self._keys(monkeypatch, "OPENROUTER_FREE_KEY")
+        monkeypatch.setenv("FREE_TIER_LANE", "secondary")
+        assert available_free_models(
+            ("openrouter/nvidia/nemotron-3-ultra-550b-a55b:free", "gemini/gemini-3.6-flash")
+        ) == ["openrouter/nvidia/nemotron-3-ultra-550b-a55b:free"]
+
+    def test_groq_qwen_asks_for_no_more_than_groq_allows(self):
+        from metaculus_bot.fallback_openrouter import _free_model_kwargs
+
+        kwargs = _free_model_kwargs("groq/qwen/qwen3.8-27b", {"max_tokens": 64_000}, max_tokens_cap=32_000)
+        assert kwargs["max_tokens"] == 16_384
+        assert _free_model_kwargs("groq/qwen/qwen3.8-27b", {"max_tokens": 4_000})["max_tokens"] == 4_000
 
     def test_with_no_reserve_the_chain_is_a_plain_rotation(self, monkeypatch):
         from metaculus_bot.fallback_openrouter import free_forecaster_chain

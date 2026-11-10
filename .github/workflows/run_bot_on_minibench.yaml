@@ -137,6 +137,10 @@ jobs:
           CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
           MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
           OPENROUTER_FREE_KEY: ${{ secrets.OPENROUTER_FREE_KEY }}
+          # Fork: MiniBench runs in the free tier's secondary lane, which never calls the FutureEval
+          # heads (constants.FREE_TIER_PRIMARY_ONLY_MODELS), so a MiniBench round cannot spend the
+          # tournament's daily quota (two FutureEval questions went unforecast on 2026-11-03).
+          FREE_TIER_LANE: secondary
           # Fork: free news search (research/free_news.py): GDELT keyless, plus Tavily when its
           # free key is set. Returns "" under is_benchmarking.
           FREE_NEWS_ENABLED: 'true'

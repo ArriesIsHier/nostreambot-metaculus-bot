@@ -15,11 +15,15 @@ from metaculus_bot.constants import (
     FREE_ERROR_BRIEF_CHARS,
     FREE_FORECASTER_NON_GEMINI_MAX_TOKENS,
     FREE_MODEL_EXTRA_KWARGS,
+    FREE_MODEL_MAX_TOKENS,
     FREE_MODEL_TIMEOUT_S,
     FREE_NON_GEMINI_MAX_TOKENS,
     FREE_PROVIDER_KEY_ENVS,
     FREE_TIER_FORECASTER_MODELS,
     FREE_TIER_FORECASTER_SLOTS,
+    FREE_TIER_LANE_ENV,
+    FREE_TIER_PRIMARY_ONLY_MODELS,
+    FREE_TIER_SECONDARY_LANE,
     FREE_UTILITY_CHAIN,
     OAI_ANTH_OPENROUTER_KEY_ENV,
     OPENROUTER_API_KEY_ENV,
@@ -526,9 +530,12 @@ def available_free_models(chain: tuple[str, ...]) -> list[str]:
 
     Returning the unfiltered chain rather than raising keeps an import-time roster build from
     crashing a run with no keys at all; the first call then fails loudly with the provider's
-    own missing-key error.
+    own missing-key error. In the secondary lane the tournament's heads are dropped too, unless
+    nothing else is left.
     """
     available = [model for model in chain if os.getenv(FREE_PROVIDER_KEY_ENVS.get(model.split("/", 1)[0], ""))]
+    if os.getenv(FREE_TIER_LANE_ENV, "").strip().lower() == FREE_TIER_SECONDARY_LANE:
+        available = [model for model in available if model not in FREE_TIER_PRIMARY_ONLY_MODELS] or available
     return available or list(chain)
 
 
@@ -542,7 +549,8 @@ def _free_model_kwargs(
     """
     model_kwargs = {key: value for key, value in kwargs.items() if key not in _OPENROUTER_ONLY_KWARGS}
     if not model.startswith("gemini/") and "max_tokens" in model_kwargs:
-        model_kwargs["max_tokens"] = min(model_kwargs["max_tokens"], max_tokens_cap)
+        cap = min(max_tokens_cap, FREE_MODEL_MAX_TOKENS.get(model, max_tokens_cap))
+        model_kwargs["max_tokens"] = min(model_kwargs["max_tokens"], cap)
     if "timeout" in model_kwargs:
         model_kwargs["timeout"] = min(model_kwargs["timeout"], FREE_MODEL_TIMEOUT_S)
     model_kwargs.update(FREE_MODEL_EXTRA_KWARGS.get(model, {}))

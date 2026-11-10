@@ -603,6 +603,19 @@ FREE_TIER_FORECASTER_MODELS: tuple[str, ...] = (
     "cerebras/qwen-3.8-27b",
 )
 FREE_TIER_FORECASTER_SLOTS: dict[str, int] = {"openai": 0, "anthropic": 1, "google": 2}
+# A MiniBench round releases ~50 questions in a day, enough to spend every free daily quota: on
+# 2026-11-03 a FutureEval batch then found no model left and two questions went unforecast. A run
+# in the secondary lane (FREE_TIER_LANE=secondary, set by the MiniBench workflow) never calls the
+# tournament's three heads, so their daily quota is left for FutureEval.
+FREE_TIER_LANE_ENV: str = "FREE_TIER_LANE"
+FREE_TIER_SECONDARY_LANE: str = "secondary"
+FREE_TIER_PRIMARY_ONLY_MODELS: frozenset[str] = frozenset(
+    {
+        "gemini/gemini-3.8-flash",
+        "openrouter/nvidia/nemotron-3-ultra-550b-a55b:free",
+        "groq/openai/gpt-oss-120b",
+    }
+)
 # Parser, market ranker (prompts up to ~35k tokens), page digest, classifiers: Gemini first for
 # its 1M context, the other providers only as a last resort.
 # OpenRouter's daily request cap is kept for the forecasters, and Groq comes before the forecasters'
@@ -633,6 +646,9 @@ FREE_MODEL_TIMEOUT_S: float = 240.0
 # Explicit reasoning efforts; the Gemini models run at their default thinking. Qwen 3.8 defaults
 # to high, whose reasoning counts against the output cap and used all 16k of it before writing an
 # answer (empty content on every Q14333 call, 2026-10-08), so it runs at medium.
+# Groq caps Qwen 3.8's output at 16,384 tokens and rejected every 32k forecaster request
+# (1,559 BadRequests, 2026-10-27..11-03).
+FREE_MODEL_MAX_TOKENS: dict[str, int] = {"groq/qwen/qwen3.8-27b": 16_384}
 FREE_MODEL_EXTRA_KWARGS: dict[str, dict[str, str]] = {
     "cerebras/gpt-oss-120b": {"reasoning_effort": "high"},
     "groq/openai/gpt-oss-120b": {"reasoning_effort": "high"},
