@@ -509,3 +509,27 @@ class TestManticWorkflowSpendsOnlyPersonalKeys:
             "dropping it moves the whole run onto the personal key. If this file was overwritten "
             "with a copy of the Mantic workflow, that is the mistake this pin exists to catch"
         )
+
+
+class TestFreeTierLanes:
+    """Fork (ArriesIsHier): MiniBench runs in the free tier's secondary lane and FutureEval does not.
+
+    A MiniBench round spent every free daily quota on 2026-11-03 and left two FutureEval questions
+    with no model; the secondary lane keeps MiniBench off the tournament's head models.
+    """
+
+    @staticmethod
+    def _lane(rel_path: str) -> object:
+        bot_steps = [step for step in _steps(_workflow(rel_path)) if "main.py" in str(step.get("run", ""))]
+        assert len(bot_steps) == 1
+        return (bot_steps[0].get("env") or {}).get("FREE_TIER_LANE")
+
+    def test_minibench_runs_in_the_secondary_lane(self) -> None:
+        assert self._lane(".github/workflows/run_bot_on_minibench.yaml") == "secondary"
+
+    @pytest.mark.parametrize(
+        "rel_path",
+        [".github/workflows/run_bot_on_tournament.yaml", ".github/workflows/run_bot_on_market_pulse.yaml"],
+    )
+    def test_the_prize_workflows_stay_in_the_primary_lane(self, rel_path: str) -> None:
+        assert self._lane(rel_path) is None

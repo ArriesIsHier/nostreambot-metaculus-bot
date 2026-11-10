@@ -58,9 +58,8 @@ reason = "cryptography 46.0.6 verifier accepts a wildcard DNS SAN that escapes a
 #     0.2.92 both cap pillow <13, so 13.0.0 is unreachable. Fetched images reach Image.open only
 #     through research/image_assets.py in agentic gap-fill v2, which this fork's workflows run with
 #     GAP_FILL_V2_ENABLED=false. Re-check if gap-fill v2 is switched on or either cap lifts.
-#   - pypdf 6.21.2: seven parse DoS advisories fixed in 6.21.3 (2026-10-27) / 6.21.4 (2026-10-28),
-#     both still inside the lock's one-week exclude-newer window. Each expires 2026-11-10; bump then.
-#     http_fetch's byte cap and the fetch wall clock already bound a pathological parse.
+#   - pypdf: its seven remaining parse DoS fixes cleared the exclude-newer window and were bumped
+#     on 2026-11-10, so their temporary waivers are gone.
 [[IgnoredVulns]]
 id = "GHSA-7hp6-4w63-5g45"
 reason = "litellm 1.98.0 proxy privilege escalation (CVSS 9.9); fix 1.100.4. Not reached: we never run the LiteLLM proxy"
@@ -187,31 +186,3 @@ reason = "pillow 12.3.0 (CVSS 9.2); fix 13.0.0 unreachable while streamlit 1.62.
 [[IgnoredVulns]]
 id = "GHSA-xvh5-g6gv-559v"
 reason = "pillow 12.3.0 (CVSS 8.8); fix 13.0.0 unreachable while streamlit 1.62.0 and forecasting-tools 0.2.92 cap pillow <13. Not reached: untrusted images are decoded only by agentic gap-fill v2, which is off in this fork"
-[[IgnoredVulns]]
-id = "GHSA-42gh-23hr-vphw"
-ignoreUntil = 2026-11-10
-reason = "pypdf 6.21.2 parse DoS (CVSS 7.1); fix 6.21.3 is inside the one-week exclude-newer window until about 2026-11-05"
-[[IgnoredVulns]]
-id = "GHSA-4vqv-7265-gm2w"
-ignoreUntil = 2026-11-10
-reason = "pypdf 6.21.2 parse DoS (CVSS 7.1); fix 6.21.3 is inside the one-week exclude-newer window until about 2026-11-05"
-[[IgnoredVulns]]
-id = "GHSA-5849-834g-hvw5"
-ignoreUntil = 2026-11-10
-reason = "pypdf 6.21.2 parse DoS (CVSS 7.1); fix 6.21.4 is inside the one-week exclude-newer window until about 2026-11-05"
-[[IgnoredVulns]]
-id = "GHSA-62m5-6wh8-28x7"
-ignoreUntil = 2026-11-10
-reason = "pypdf 6.21.2 parse DoS (CVSS 7.1); fix 6.21.3 is inside the one-week exclude-newer window until about 2026-11-05"
-[[IgnoredVulns]]
-id = "GHSA-cggf-277g-3q54"
-ignoreUntil = 2026-11-10
-reason = "pypdf 6.21.2 parse DoS (CVSS 7.1); fix 6.21.4 is inside the one-week exclude-newer window until about 2026-11-05"
-[[IgnoredVulns]]
-id = "GHSA-mfr5-77xh-9j7h"
-ignoreUntil = 2026-11-10
-reason = "pypdf 6.21.2 parse DoS (CVSS 7.1); fix 6.21.4 is inside the one-week exclude-newer window until about 2026-11-05"
-[[IgnoredVulns]]
-id = "GHSA-x3rh-gjgm-fmqc"
-ignoreUntil = 2026-11-10
-reason = "pypdf 6.21.2 parse DoS (CVSS 7.1); fix 6.21.3 is inside the one-week exclude-newer window until about 2026-11-05"

@@ -25,7 +25,8 @@ research stack and its Summer 2026 result (15th of 277) belongs to them. This fo
   (Mistral activates keys only on a paid plan, as of 2026-10-08) and `OPENROUTER_FREE_KEY`
   (OpenRouter `:free` models; a separate name, so it never switches the paid pipeline on). The three forecasters start on three different models from
   `FREE_TIER_FORECASTER_MODELS` and fall back through the rest when one is overloaded or rate
-  limited. Research adds free news search (GDELT, plus Tavily with `TAVILY_API_KEY`) to prediction
+  limited. MiniBench runs in a secondary lane (`FREE_TIER_LANE=secondary`) that never calls the three
+  FutureEval heads, so a MiniBench round cannot spend the tournament's daily quota. Research adds free news search (GDELT, plus Tavily with `TAVILY_API_KEY`) to prediction
   markets, the resolution source, financial data and the time-series anchor. The free tiers have no
   grounded web search. Adding the donated key switches back automatically.
 - **Lean mode.** Set the repository *variable* `LEAN_MODE=true` (Settings → Secrets and variables
